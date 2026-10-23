@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PKI Mega-Toolbox | Advanced X.509 Studio</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
+  <style>
+    :root {
+      --bg: #050505; --surface: #111111; --surface2: #1a1a1a;
+      --border: #333; --border-focus: #3b82f6;
+      --text: #e5e5e5; --muted: #888;
+      --accent: #3b82f6; --accent-hover: #2563eb;
+      --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+      --font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); padding: 20px; font-size: 14px; }
+    .container { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
+    
+    /* Sidebar */
+    .sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; height: fit-content; }
+    .sidebar h2 { font-size: 16px; margin-bottom: 20px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+    .nav-btn { display: block; width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); padding: 10px; text-align: left; cursor: pointer; border-radius: 6px; font-family: var(--font); margin-bottom: 5px; transition: 0.2s; }
+    .nav-btn:hover { background: var(--surface2); }
+    .nav-btn.active { background: #172554; border-color: var(--accent); color: #93c5fd; }
+    
+    /* Main Content */
+    .main { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 25px; min-height: 80vh; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    h3 { font-size: 20px; margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    p.desc { color: var(--muted); margin-bottom: 20px; font-size: 13px; }
+    
+    /* Forms */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+    .full-width { grid-column: 1 / -1; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; }
+    input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 4px; font-family: var(--font); outline: none; }
+    input:focus, select:focus { border-color: var(--border-focus); }
+    .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: var(--bg); padding: 10px; border: 1px solid var(--border); border-radius: 4px; }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); text-transform: none; cursor: pointer;}
+    .checkbox-label input { width: auto; }
+    
+    /* Buttons & Status */
+    .btn { background: var(--accent); color: #fff; border: none; padding: 12px 20px; font-family: var(--font); font-weight: bold; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); }
+    .btn-sm:hover { background: var(--border); }
+    .status { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; }
+    .status.info { background: #082f49; color: #7dd3fc; border: 1px solid #0369a1; display: block; }
+    .status.error { background: #450a0a; color: #fca5a5; border: 1px solid #991b1b; display: block; }
+    .status.success { background: #064e3b; color: #6ee7b7; border: 1px solid #047857; display: block; }
+    
+    /* Keyring List */
+    .keyring-item { background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--border); }
+    .keyring-item.type-root { border-left-color: var(--danger); }
+    .keyring-item.type-inter { border-left-color: var(--warning); }
+    .keyring-item.type-leaf { border-left-color: var(--success); }
+    .keyring-info strong { font-size: 15px; display: block; margin-bottom: 4px; }
+    .keyring-info span { font-size: 12px; color: var(--muted); }
+    .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-right: 8px; text-transform: uppercase; }
+    .badge.root { background: #7f1d1d; color: #fca5a5; }
+    .badge.inter { background: #78350f; color: #fcd34d; }
+    .badge.leaf { background: #14532d; color: #86efac; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- SIDEBAR NAVIGATION -->
+  <div class="sidebar">
+    <h2>PKI Toolbox</h2>
+    <button class="nav-btn active" onclick="nav('keyring')">🗄️ Správce klíčů</button>
+    <button class="nav-btn" onclick="nav('root')">👑 Vytvořit Root CA</button>
+    <button class="nav-btn" onclick="nav('inter')">🔗 Vytvořit Intermediate CA</button>
+    <button class="nav-btn" onclick="nav('leaf')">🍃 Vystavit koncový cert</button>
+    <button class="nav-btn" onclick="nav('cross')">🔀 Cross-Signing</button>
+  </div>
+
+  <!-- MAIN PANELS -->
+  <div class="main">
+    
+    <!-- PANEL: KEYRING -->
+    <div id="panel-keyring" class="panel active">
+      <h3>Virtuální klíčenka</h3>
+      <p class="desc">Všechny certifikáty a klíče jsou generovány a uchovávány pouze v RAM paměti tvého prohlížeče. Po obnovení stránky zmizí.</p>
+      <div id="keyring-list">
+        <p style="color: var(--muted); font-style: italic;">Zatím nebyly vygenerovány žádné certifikáty.</p>
+      </div>
+    </div>
+
+    <!-- PANEL: ROOT CA -->
+    <div id="panel-root" class="panel">
+      <h3>Generátor Root CA</h3>
+      <p class="desc">Absolutní vládce řetězce. Certifikát je self-signed (podepsaný sám sebou).</p>
+      
+      <div class="grid-2">
+        <div class="full-width">
+          <label>Common Name (CN)</label>
+          <input type="text" id="r-cn" value="Moje Globalni Root CA">
+        </div>
+        <div><label>Organizace (O)</label><input type="text" id="r-o" value="CyberCorp Ltd."></div>
+        <div><label>Org. jednotka (OU)</label><input type="text" id="r-ou" value="Certifikacni Autorita"></div>
+        <div><label>Země (C)</label><input type="text" id="r-c" value="CZ"></div>
+        <div><label>Město (L)</label><input type="text" id="r-l" value="Praha"></div>
+        <div>
+          <label>Algoritmus klíče</label>
+          <select id="r-bits">
+            <option value="2048">RSA 2048 (Standard)</option>
+            <option value="4096" selected>RSA 4096 (Vysoká bezpečnost)</option>
+          </select>
+        </div>
+        <div>
+          <label>Platnost (roky)</label>
+          <input type="number" id="r-years" value="20">
+        </div>
+      </div>
+      <button class="btn" id="btn-gen-root" onclick="generateRoot()">Vygenerovat Root CA</button>
+      <div id="status-root" class="status"></div>
+    </div>
+
+    <!-- PANEL: INTERMEDIATE CA -->
+    <div id="panel-inter" class="panel">
+      <h3>Generátor Intermediate CA</h3>
+      <p class="desc">Podřízená autorita (Sub-CA), která slouží k dennímu vydávání certifikátů. Zvyšuje bezpečnost Root CA.</p>
+      
+      <div class="grid-2">
+        <div class="full-width">
+          <label>Vystavitel (Vyber existující CA)</label>
+          <select id="i-issuer" class="ca-select"><option value="">-- Nejprve vytvořte CA --</option></select>
+        </div>
+        <div class="full-width">
+          <label>Common Name (CN)</label>
+          <input type="text" id="i-cn" value="CyberCorp Intermediate R1">
+        </div>
+        <div><label>Platnost (roky)</label><input type="number" id="i-years" value="5"></div>
+        <div><label>Max. hloubka cesty (PathLen)</label><input type="number" id="i-pathlen" value="0"></div>
+      </div>
+      <button class="btn" id="btn-gen-inter" onclick="generateInter()">Vytvořit a podepsat Intermediate</button>
+      <div id="status-inter" class="status"></div>
+    </div>
+
+    <!-- PANEL: LEAF CERTIFICATE -->
+    <div id="panel-leaf" class="panel">
+      <h3>Koncový certifikát</h3>
+      <p class="desc">List v řetězci (Leaf). Tento certifikát už nesmí podepisovat další (cA: false).</p>
+      
+      <div class="grid-2">
+        <div class="full-width">
+          <label>Vystavitel (CA)</label>
+          <select id="l-issuer" class="ca-select"><option value="">-- Nejprve vytvořte CA --</option></select>
+        </div>
+        <div class="full-width">
+          <label>Common Name (CN) / Hlavní doména</label>
+          <input type="text" id="l-cn" value="www.moje-aplikace.cz">
+        </div>
+        <div class="full-width">
+          <label>Subject Alternative Names (SAN) - čárkou oddělené</label>
+          <input type="text" id="l-san" value="moje-aplikace.cz, *.moje-aplikace.cz, 10.0.0.5">
+        </div>
+        <div>
+          <label>Klíč</label>
+          <select id="l-bits"><option value="2048" selected>RSA 2048</option><option value="4096">RSA 4096</option></select>
+        </div>
+        <div><label>Platnost (dny)</label><input type="number" id="l-days" value="398"></div>
+        
+        <div class="full-width">
+          <label>Účel použití (Extended Key Usage)</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label"><input type="checkbox" id="eku-server" checked> Server Auth (HTTPS Weby)</label>
+            <label class="checkbox-label"><input type="checkbox" id="eku-client"> Client Auth (mTLS Login)</label>
+            <label class="checkbox-label"><input type="checkbox" id="eku-email"> Email Protection (S/MIME)</label>
+            <label class="checkbox-label"><input type="checkbox" id="eku-code"> Code Signing (SW)</label>
+          </div>
+        </div>
+      </div>
+      <button class="btn" id="btn-gen-leaf" onclick="generateLeaf()">Vystavit koncový certifikát</button>
+      <div id="status-leaf" class="status"></div>
+    </div>
+
+    <!-- PANEL: CROSS-SIGNING -->
+    <div id="panel-cross" class="panel">
+      <h3>Cross-Signing (Křížové podepsání)</h3>
+      <p class="desc">Vezme veřejný klíč a identitu již existující CA (Cílová CA) a podepíše ji soukromým klíčem jiné CA (Nový Vystavitel). Takto vznikl např. Let's Encrypt ISRG Root X1 cross-signed od DST Root X3.</p>
+      
+      <div class="grid-2">
+        <div>
+          <label>Cílová CA (Ta, jejíž certifikát se přepisuje)</label>
+          <select id="c-target" class="ca-select"></select>
+        </div>
+        <div>
+          <label>Nový Vystavitel (Kdo to podepíše)</label>
+          <select id="c-issuer" class="ca-select"></select>
+        </div>
+        <div class="full-width">
+          <label>Nová platnost křížového certifikátu (roky)</label>
+          <input type="number" id="c-years" value="3">
+        </div>
+      </div>
+      <button class="btn" id="btn-gen-cross" onclick="crossSign()">Vytvořit Cross-Signed Certifikát</button>
+      <div id="status-cross" class="status"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ---- STAV APLIKACE (Virtuální klíčenka) ----
+  // Obsahuje objekty: { id, type, name, issuerId, certPem, keyPem, certObj, keyObj }
+  const store = [];
+  let idCounter = 1;
+
+  // ---- NAVIGACE ----
+  function nav(panelId) {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('panel-' + panelId).classList.add('active');
+    if (panelId === 'keyring') renderKeyring();
+  }
+
+  function setStatus(elementId, text, type) {
+    const el = document.getElementById(elementId);
+    el.className = 'status ' + type;
+    el.innerText = text;
+  }
+
+  function updateCaSelects() {
+    const cas = store.filter(item => item.type === 'root' || item.type === 'inter' || item.type === 'cross');
+    const selects = document.querySelectorAll('.ca-select');
+    
+    selects.forEach(select => {
+      const currentVal = select.value;
+      select.innerHTML = cas.length ? '' : '<option value="">-- Nejprve vytvořte CA --</option>';
+      cas.forEach(ca => {
+        const opt = document.createElement('option');
+        opt.value = ca.id;
+        opt.innerText = `[${ca.type.toUpperCase()}] ${ca.name}`;
+        select.appendChild(opt);
+      });
+      if (currentVal && cas.find(c => c.id == currentVal)) select.value = currentVal;
+    });
+  }
+
+  function downloadFile(filename, content) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
+
+  // Rekurzivní sbalení chainu: Certifikát + Vystavitel + Vystavitel Vystavitele...
+  function downloadChain(id) {
+    let current = store.find(i => i.id === id);
+    let chain = current.certPem;
+    
+    // Zabraňuje zacyklení u self-signed
+    while (current && current.issuerId && current.issuerId !== current.id) {
+      current = store.find(i => i.id === current.issuerId);
+      if (current) {
+        chain += '\n' + current.certPem;
+      }
+    }
+    downloadFile(store.find(i=>i.id===id).name.replace(/\s+/g,'_') + '_chain.pem', chain);
+  }
+
+  function renderKeyring() {
+    const list = document.getElementById('keyring-list');
+    if (store.length === 0) {
+      list.innerHTML = '<p style="color: var(--muted); font-style: italic;">Zatím nebyly vygenerovány žádné certifikáty.</p>';
+      return;
+    }
+    
+    list.innerHTML = '';
+    store.slice().reverse().forEach(item => {
+      let badge = '';
+      if (item.type === 'root') badge = '<span class="badge root">ROOT CA</span>';
+      else if (item.type === 'inter') badge = '<span class="badge inter">SUB CA</span>';
+      else if (item.type === 'cross') badge = '<span class="badge inter" style="background:#4c1d95; color:#ddd6fe;">CROSS CA</span>';
+      else badge = '<span class="badge leaf">LEAF</span>';
+
+      const issuerName = item.issuerId === item.id ? 'Self-Signed' : (store.find(i => i.id === item.issuerId)?.name || 'Neznámý');
+
+      list.innerHTML += `
+        <div class="keyring-item type-${item.type === 'cross' ? 'inter' : item.type}">
+          <div class="keyring-info">
+            <strong>${badge} ${item.name}</strong>
+            <span>Vystavitel: ${issuerName} | Algoritmus: RSA</span>
+          </div>
+          <div>
+            <button class="btn-sm" onclick="downloadFile('${item.name.replace(/\s+/g,'_')}.crt', store.find(i=>i.id==${item.id}).certPem)">.CRT</button>
+            <button class="btn-sm" onclick="downloadFile('${item.name.replace(/\s+/g,'_')}.key', store.find(i=>i.id==${item.id}).keyPem)">.KEY</button>
+            ${item.type === 'leaf' || item.type === 'inter' ? `<button class="btn-sm" onclick="downloadChain(${item.id})">CHAIN (.pem)</button>` : ''}
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  // ---- KRYPTOGRAFIE (Node-Forge) ----
+  function createBaseCert(keys, cn, validityDays, serialPrefix) {
+    const pki = forge.pki;
+    const cert = pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = serialPrefix + Math.floor(Math.random() * 100000000).toString(16);
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date();
+    cert.validity.notAfter.setDate(cert.validity.notBefore.getDate() + validityDays);
+    return cert;
+  }
+
+  // 1. ROOT CA
+  function generateRoot() {
+    const btn = document.getElementById('btn-gen-root');
+    btn.disabled = true;
+    setStatus('status-root', 'Kompiluji Root CA (RSA generování může trvat sekundy)...', 'info');
+
+    setTimeout(() => {
+      try {
+        const cn = document.getElementById('r-cn').value;
+        const bits = parseInt(document.getElementById('r-bits').value);
+        const years = parseInt(document.getElementById('r-years').value);
+        
+        const pki = forge.pki;
+        const keys = pki.rsa.generateKeyPair(bits);
+        const cert = createBaseCert(keys, cn, years * 365, '01');
+
+        const attrs = [
+          { name: 'commonName', value: cn },
+          { name: 'organizationName', value: document.getElementById('r-o').value },
+          { name: 'organizationalUnitName', value: document.getElementById('r-ou').value },
+          { name: 'countryName', value: document.getElementById('r-c').value },
+          { name: 'localityName', value: document.getElementById('r-l').value }
+        ].filter(a => a.value);
+
+        cert.setSubject(attrs);
+        cert.setIssuer(attrs); // Self-signed
+        cert.setExtensions([
+          { name: 'basicConstraints', cA: true, critical: true },
+          { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+          { name: 'subjectKeyIdentifier' }
+        ]);
+
+        cert.sign(keys.privateKey, forge.md.sha256.create());
+
+        const id = idCounter++;
+        store.push({
+          id, type: 'root', name: cn, issuerId: id,
+          certObj: cert, keyObj: keys.privateKey,
+          certPem: pki.certificateToPem(cert), keyPem: pki.privateKeyToPem(keys.privateKey)
+        });
+
+        updateCaSelects();
+        setStatus('status-root', `✓ Root CA "${cn}" úspěšně uložena do klíčenky!`, 'success');
+      } catch (err) {
+        setStatus('status-root', 'Chyba: ' + err.message, 'error');
+      } finally { btn.disabled = false; }
+    }, 50);
+  }
+
+  // 2. INTERMEDIATE CA
+  function generateInter() {
+    const issuerId = parseInt(document.getElementById('i-issuer').value);
+    if (!issuerId) return alert("Vyberte vystavitele!");
+    const issuer = store.find(i => i.id === issuerId);
+    
+    const btn = document.getElementById('btn-gen-inter');
+    btn.disabled = true;
+    setStatus('status-inter', 'Vytvářím a řetězím Intermediate CA...', 'info');
+
+    setTimeout(() => {
+      try {
+        const cn = document.getElementById('i-cn').value;
+        const pathLen = parseInt(document.getElementById('i-pathlen').value);
+        
+        const pki = forge.pki;
+        const keys = pki.rsa.generateKeyPair(2048);
+        const cert = createBaseCert(keys, cn, parseInt(document.getElementById('i-years').value) * 365, '02');
+
+        cert.setSubject([{ name: 'commonName', value: cn }]);
+        cert.setIssuer(issuer.certObj.subject.attributes); // Podepsáno rodičem
+
+        const basicCons = { name: 'basicConstraints', cA: true, critical: true };
+        if (pathLen >= 0) basicCons.pathLenConstraint = pathLen;
+
+        cert.setExtensions([
+          basicCons,
+          { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+          { name: 'subjectKeyIdentifier' },
+          { name: 'authorityKeyIdentifier', keyIdentifier: true }
+        ]);
+
+        cert.sign(issuer.keyObj, forge.md.sha256.create());
+
+        store.push({
+          id: idCounter++, type: 'inter', name: cn, issuerId: issuer.id,
+          certObj: cert, keyObj: keys.privateKey,
+          certPem: pki.certificateToPem(cert), keyPem: pki.privateKeyToPem(keys.privateKey)
+        });
+
+        updateCaSelects();
+        setStatus('status-inter', `✓ Intermediate CA podepsána autoritou ${issuer.name}!`, 'success');
+      } catch(err) { setStatus('status-inter', 'Chyba: '+err.message, 'error'); }
+      finally { btn.disabled = false; }
+    }, 50);
+  }
+
+  // 3. LEAF / SERVER CERT
+  function generateLeaf() {
+    const issuerId = parseInt(document.getElementById('l-issuer').value);
+    if (!issuerId) return alert("Vyberte vystavitele!");
+    const issuer = store.find(i => i.id === issuerId);
+    
+    const btn = document.getElementById('btn-gen-leaf');
+    btn.disabled = true;
+    setStatus('status-leaf', 'Vystavuji koncový certifikát...', 'info');
+
+    setTimeout(() => {
+      try {
+        const cn = document.getElementById('l-cn').value;
+        const pki = forge.pki;
+        const keys = pki.rsa.generateKeyPair(parseInt(document.getElementById('l-bits').value));
+        const cert = createBaseCert(keys, cn, parseInt(document.getElementById('l-days').value), '03');
+
+        cert.setSubject([{ name: 'commonName', value: cn }]);
+        cert.setIssuer(issuer.certObj.subject.attributes);
+
+        // Zpracování SAN (IP adresy vs DNS)
+        const rawSans = document.getElementById('l-san').value;
+        const altNames = rawSans.split(',').map(s => s.trim()).filter(Boolean).map(item => {
+          return /^(\d{1,3}\.){3}\d{1,3}$/.test(item) ? { type: 7, ip: item } : { type: 2, value: item };
+        });
+
+        // Zpracování Extended Key Usage
+        const eku = [];
+        if(document.getElementById('eku-server').checked) eku.push({name: 'serverAuth'});
+        if(document.getElementById('eku-client').checked) eku.push({name: 'clientAuth'});
+        if(document.getElementById('eku-email').checked) eku.push({name: 'emailProtection'});
+        if(document.getElementById('eku-code').checked) eku.push({name: 'codeSigning'});
+
+        cert.setExtensions([
+          { name: 'basicConstraints', cA: false, critical: true },
+          { name: 'keyUsage', digitalSignature: true, keyEncipherment: true, critical: true },
+          { name: 'extKeyUsage', ...eku.reduce((acc, curr) => ({...acc, [curr.name]: true}), {}) },
+          { name: 'subjectAltName', altNames: altNames },
+          { name: 'authorityKeyIdentifier', keyIdentifier: true }
+        ]);
+
+        cert.sign(issuer.keyObj, forge.md.sha256.create());
+
+        store.push({
+          id: idCounter++, type: 'leaf', name: cn, issuerId: issuer.id,
+          certObj: cert, keyObj: keys.privateKey,
+          certPem: pki.certificateToPem(cert), keyPem: pki.privateKeyToPem(keys.privateKey)
+        });
+
+        setStatus('status-leaf', `✓ Koncový certifikát "${cn}" vygenerován!`, 'success');
+      } catch(err) { setStatus('status-leaf', 'Chyba: '+err.message, 'error'); }
+      finally { btn.disabled = false; }
+    }, 50);
+  }
+
+  // 4. CROSS SIGNING
+  function crossSign() {
+    const targetId = parseInt(document.getElementById('c-target').value);
+    const issuerId = parseInt(document.getElementById('c-issuer').value);
+    if (!targetId || !issuerId) return alert("Vyberte cílovou CA a nového vystavitele!");
+    if (targetId === issuerId) return alert("Cílová CA a Vystavitel nesmí být stejní!");
+    
+    const target = store.find(i => i.id === targetId);
+    const issuer = store.find(i => i.id === issuerId);
+    
+    const btn = document.getElementById('btn-gen-cross');
+    btn.disabled = true;
+    setStatus('status-cross', 'Provádím křížové podepsání...', 'info');
+
+    setTimeout(() => {
+      try {
+        const pki = forge.pki;
+        const cert = pki.createCertificate();
+        
+        // 1. Zkopírujeme veřejný klíč z cílové autority
+        cert.publicKey = target.certObj.publicKey;
+        // 2. Zkopírujeme identitu subjektu z cílové autority
+        cert.setSubject(target.certObj.subject.attributes);
+        // 3. Novým vystavitelem je druhá autorita
+        cert.setIssuer(issuer.certObj.subject.attributes);
+        
+        cert.serialNumber = '99' + Math.floor(Math.random() * 1000000);
+        cert.validity.notBefore = new Date();
+        cert.validity.notAfter = new Date();
+        cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + parseInt(document.getElementById('c-years').value));
+
+        cert.setExtensions([
+          { name: 'basicConstraints', cA: true, critical: true },
+          { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+          { name: 'authorityKeyIdentifier', keyIdentifier: true }
+        ]);
+
+        // 4. Podepíšeme to SOUKROMÝM KLÍČEM NOVÉHO VYSTAVITELE
+        cert.sign(issuer.keyObj, forge.md.sha256.create());
+
+        store.push({
+          id: idCounter++, type: 'cross', name: `[Cross] ${target.name}`, issuerId: issuer.id,
+          certObj: cert, keyObj: target.keyObj, // Privátní klíč zůstává původní od cílové autority!
+          certPem: pki.certificateToPem(cert), keyPem: target.keyPem
+        });
+
+        updateCaSelects();
+        setStatus('status-cross', `✓ Autorita "${target.name}" byla křížově podepsána vystavitelem "${issuer.name}"!`, 'success');
+      } catch(err) { setStatus('status-cross', 'Chyba: '+err.message, 'error'); }
+      finally { btn.disabled = false; }
+    }, 50);
+  }
+
+</script>
+</body>
+</html>

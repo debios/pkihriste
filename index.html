@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -502,54 +503,105 @@
 <div id="toast-container"></div>
 
 <script>
-  // --- KOMPLETNÍ PATCH PRO NODE-FORGE (Podpora ECDSA P-256 / P-384 veřejných klíčů) ---
+  // --- HLOUBKOVÝ PATCH PRO NODE-FORGE 1.3.1 (Plná podpora ECDSA P-256, P-384 a Ed25519 v X.509) ---
   if (window.forge && forge.pki) {
     const origPubFrom = forge.pki.publicKeyFromAsn1;
-    forge.pki.publicKeyFromAsn1 = function(obj) {
+    forge.pki.publicKeyFromAsn1 = forge.pki.rsa.publicKeyFromAsn1 = function(obj) {
       try {
         return origPubFrom(obj);
-      } catch(e) {
+      } catch (e) {
         return { rawAsn1: obj, isDummy: true };
       }
     };
 
     const origPrivFrom = forge.pki.privateKeyFromAsn1;
-    forge.pki.privateKeyFromAsn1 = function(obj) {
+    forge.pki.privateKeyFromAsn1 = forge.pki.rsa.privateKeyFromAsn1 = function(obj) {
       try {
         return origPrivFrom(obj);
-      } catch(e) {
+      } catch (e) {
         return { rawAsn1: obj, isDummy: true };
       }
     };
 
     const origPubTo = forge.pki.publicKeyToAsn1;
-    forge.pki.publicKeyToAsn1 = function(key) {
+    forge.pki.publicKeyToAsn1 = forge.pki.rsa.publicKeyToAsn1 = function(key) {
       if (key && key.rawAsn1) return key.rawAsn1;
       return origPubTo(key);
     };
 
     const origPrivTo = forge.pki.privateKeyToAsn1;
-    forge.pki.privateKeyToAsn1 = function(key) {
+    forge.pki.privateKeyToAsn1 = forge.pki.rsa.privateKeyToAsn1 = function(key) {
       if (key && key.rawAsn1) return key.rawAsn1;
       return origPrivTo(key);
     };
-  }
 
-  // Pomocná funkce pro výpočet SubjectKeyIdentifier (RFC 5280: SHA-1 z BIT STRING hodnoty SPKI)
-  function buildSubjectKeyIdentExt(publicKey) {
-    if (publicKey && publicKey.rawAsn1) {
-      try {
-        const spki = publicKey.rawAsn1;
-        // V SubjectPublicKeyInfo (SEQUENCE) je druhý prvek BIT STRING s prvním nulovým bajtem (unused bits)
-        const bitString = spki.value[1].value.slice(1);
-        const md = forge.md.sha1.create();
-        md.update(bitString);
-        return { name: 'subjectKeyIdentifier', subjectKeyIdentifier: md.digest().toHex() };
-      } catch (e) {
-        return null;
+    // Zabrání volání _bnToBytes(key.n) -> e.toString(16), pokud cokoliv uvnitř Forge zavolá publicKeyToRSAPublicKey
+    const origToRsaPub = forge.pki.rsa.publicKeyToRSAPublicKey;
+    forge.pki.publicKeyToRSAPublicKey = forge.pki.rsa.publicKeyToRSAPublicKey = function(key) {
+      if (key && key.rawAsn1) return key.rawAsn1;
+      return origToRsaPub(key);
+    };
+
+    // Přepis getPublicKeyFingerprint: volá jej cert.generateSubjectKeyIdentifier() uvnitř cert.setExtensions()
+    const origGetFp = forge.pki.getPublicKeyFingerprint;
+    forge.pki.getPublicKeyFingerprint = function(key, options) {
+      if (key && key.rawAsn1) {
+        options = options || {};
+        const md = options.md || forge.md.sha1.create();
+        let bytes = '';
+        if (key.rawAsn1.value && key.rawAsn1.value[1] && typeof key.rawAsn1.value[1].value === 'string') {
+          // RFC 5280 sekce 4.2.1.2: SHA-1 otisk hodnoty BIT STRING subjectPublicKey (bez prvního bajtu unused-bits)
+          bytes = key.rawAsn1.value[1].value.slice(1);
+        } else {
+          bytes = forge.asn1.toDer(key.rawAsn1).getBytes();
+        }
+        md.update(bytes);
+        const out = md.digest();
+        if (options.encoding === 'hex') {
+          const hex = out.toHex();
+          return options.delimiter ? hex.match(/.{2}/g).join(options.delimiter) : hex;
+        }
+        if (options.encoding === 'binary') return out.getBytes();
+        return out;
       }
-    }
-    return { name: 'subjectKeyIdentifier' };
+      return origGetFp(key, options);
+    };
+
+    // RFC 5758 & RFC 8410: ECDSA a Ed25519 nesmí mít v AlgorithmIdentifier připojený NULL parametr
+    const NO_PARAM_SIG_OIDS = new Set([
+      '1.2.840.10045.4.3.2', // ecdsa-with-SHA256
+      '1.2.840.10045.4.3.3', // ecdsa-with-SHA384
+      '1.3.101.112'          // Ed25519
+    ]);
+
+    const origGetTbs = forge.pki.getTbsCertificate;
+    forge.pki.getTbsCertificate = function(cert) {
+      const tbs = origGetTbs(cert);
+      if (cert && cert.siginfo && NO_PARAM_SIG_OIDS.has(cert.siginfo.algorithmOid)) {
+        for (let i = 0; i < tbs.value.length; i++) {
+          const node = tbs.value[i];
+          if (node && node.type === forge.asn1.Type.SEQUENCE && node.value && node.value.length === 2 &&
+              node.value[0].type === forge.asn1.Type.OID && node.value[1].type === forge.asn1.Type.NULL) {
+            node.value.pop();
+            break;
+          }
+        }
+      }
+      return tbs;
+    };
+
+    const origCertToAsn1 = forge.pki.certificateToAsn1;
+    forge.pki.certificateToAsn1 = function(cert) {
+      const certAsn1 = origCertToAsn1(cert);
+      if (cert && NO_PARAM_SIG_OIDS.has(cert.signatureOid)) {
+        const sigAlgNode = certAsn1.value[1];
+        if (sigAlgNode && sigAlgNode.value && sigAlgNode.value.length === 2 &&
+            sigAlgNode.value[1].type === forge.asn1.Type.NULL) {
+          sigAlgNode.value.pop();
+        }
+      }
+      return certAsn1;
+    };
   }
 
   // ---- INITIALIZATION & STATE ----
@@ -806,14 +858,30 @@
 
   async function generateKeyMaterial(algoSpec) {
     const pki = forge.pki;
+    const asn1 = forge.asn1;
     
-    // ED25519
+    // ED25519 (RFC 8410 SubjectPublicKeyInfo ASN.1)
     if (algoSpec === 'ED25519') {
       const seedBytes = forge.random.getBytesSync(32);
       const edKeys = pki.ed25519.generateKeyPair({ seed: seedBytes });
       const seedHex = forge.util.bytesToHex(seedBytes);
       const pseudoPem = `-----BEGIN ED25519 PRIVATE KEY-----\n${window.btoa(seedBytes)}\n-----END ED25519 PRIVATE KEY-----`;
-      return { algo: 'ED25519', publicKey: edKeys.publicKey, privateKey: edKeys.privateKey, keyPem: pseudoPem, edSeedHex: seedHex };
+      
+      const pubBytesStr = forge.util.createBuffer(edKeys.publicKey).getBytes();
+      const spkiAsn1 = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer('1.3.101.112').getBytes())
+        ]),
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.BITSTRING, false, '\x00' + pubBytesStr)
+      ]);
+
+      return {
+        algo: 'ED25519',
+        publicKey: { rawAsn1: spkiAsn1, isDummy: true },
+        privateKey: edKeys.privateKey,
+        keyPem: pseudoPem,
+        edSeedHex: seedHex
+      };
     }
 
     // ECDSA (P-256, P-384) přes WebCrypto API
@@ -828,15 +896,12 @@
       
       const pkcs8Buf = await window.crypto.subtle.exportKey('pkcs8', webKey.privateKey);
       const spkiBuf = await window.crypto.subtle.exportKey('spki', webKey.publicKey);
-      
-      const pubPem = arrayBufferToPem(spkiBuf, 'PUBLIC KEY');
       const keyPem = arrayBufferToPem(pkcs8Buf, 'PRIVATE KEY');
 
-      // Převedeme SPKI ArrayBuffer na Forge ASN.1 objekt napřímo přes ByteBuffer
       const spkiBytes = new Uint8Array(spkiBuf);
       let spkiBinStr = '';
       for (let i = 0; i < spkiBytes.length; i++) spkiBinStr += String.fromCharCode(spkiBytes[i]);
-      const spkiAsn1 = forge.asn1.fromDer(forge.util.createBuffer(spkiBinStr));
+      const spkiAsn1 = asn1.fromDer(forge.util.createBuffer(spkiBinStr));
       
       return {
         algo: algoSpec,
@@ -910,7 +975,7 @@
       tbsBuf
     );
 
-    // Konverze IEEE P1363 (R|S) podpisu do X.509 ASN.1 SEQUENCE (INTEGER r, INTEGER s)
+    // Převod IEEE P1363 (R|S) podpisu do X.509 ASN.1 SEQUENCE (INTEGER r, INTEGER s)
     const sigBytes = new Uint8Array(rawSig);
     const half = sigBytes.length / 2;
     const rBytes = sigBytes.subarray(0, half);
@@ -941,20 +1006,33 @@
     const issuerKeyPem = issuerItem.keyPem;
 
     if (issuerAlgo === 'ED25519') {
-      cert.sign(issuerKeyObj);
+      const oid = '1.3.101.112';
+      cert.signatureOid = oid;
+      cert.signatureParameters = undefined;
+      cert.siginfo = cert.siginfo || {};
+      cert.siginfo.algorithmOid = oid;
+      cert.siginfo.parameters = undefined;
+
+      cert.tbsCertificate = forge.pki.getTbsCertificate(cert);
+      const tbsDer = forge.asn1.toDer(cert.tbsCertificate).getBytes();
+      const sigUint8 = forge.pki.ed25519.sign({
+        message: tbsDer,
+        encoding: 'binary',
+        privateKey: issuerKeyObj
+      });
+      cert.signature = forge.util.createBuffer(sigUint8).getBytes();
     } else if (issuerAlgo.startsWith('ECDSA-')) {
       const curve = issuerAlgo.replace('ECDSA-', '');
       const oid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
       
-      // KLÍČOVÁ OPRAVA: Musíme nastavit jak cert.signatureOid, tak cert.siginfo.algorithmOid!
       cert.signatureOid = oid;
       cert.signatureParameters = undefined;
       cert.siginfo = cert.siginfo || {};
       cert.siginfo.algorithmOid = oid;
       cert.siginfo.parameters = undefined;
       
-      const tbs = forge.pki.getTbsCertificate(cert);
-      const tbsDer = forge.asn1.toDer(tbs).getBytes();
+      cert.tbsCertificate = forge.pki.getTbsCertificate(cert);
+      const tbsDer = forge.asn1.toDer(cert.tbsCertificate).getBytes();
       
       cert.signature = await signEcdsaWebCrypto(tbsDer, issuerKeyPem, curve);
     } else {
@@ -991,16 +1069,11 @@
       cert.setSubject(attrs);
       cert.setIssuer(attrs);
       
-      const exts = [
+      cert.setExtensions([
         { name: 'basicConstraints', cA: true, critical: true },
-        { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
-      ];
-      
-      if (keyMat.algo !== 'ED25519') {
-        const ski = buildSubjectKeyIdentExt(keyMat.publicKey);
-        if (ski) exts.push(ski);
-      }
-      cert.setExtensions(exts);
+        { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+        { name: 'subjectKeyIdentifier' }
+      ]);
 
       await signCertificateWithIssuer(cert, keyMat, true);
 
@@ -1045,15 +1118,11 @@
       const basicCons = { name: 'basicConstraints', cA: true, critical: true };
       if (!isNaN(pathLen) && pathLen >= 0) basicCons.pathLenConstraint = pathLen;
 
-      const exts = [
+      cert.setExtensions([
         basicCons,
-        { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
-      ];
-      if (keyMat.algo !== 'ED25519') {
-        const ski = buildSubjectKeyIdentExt(keyMat.publicKey);
-        if (ski) exts.push(ski);
-      }
-      cert.setExtensions(exts);
+        { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+        { name: 'subjectKeyIdentifier' }
+      ]);
 
       await signCertificateWithIssuer(cert, issuer);
 
@@ -1141,12 +1210,13 @@
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRSA) kuObj.keyEncipherment = true;
 
-      const exts = [ { name: 'basicConstraints', cA: false, critical: true }, kuObj, ekuObj ];
+      const exts = [
+        { name: 'basicConstraints', cA: false, critical: true },
+        kuObj,
+        ekuObj,
+        { name: 'subjectKeyIdentifier' }
+      ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
-      if (keyMat.algo !== 'ED25519') {
-        const ski = buildSubjectKeyIdentExt(keyMat.publicKey);
-        if (ski) exts.push(ski);
-      }
       cert.setExtensions(exts);
 
       await signCertificateWithIssuer(cert, issuer);
@@ -1224,7 +1294,12 @@
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRsaPublicKey) kuObj.keyEncipherment = true;
 
-      const exts = [ { name: 'basicConstraints', cA: false, critical: true }, kuObj, ekuObj ];
+      const exts = [
+        { name: 'basicConstraints', cA: false, critical: true },
+        kuObj,
+        ekuObj,
+        { name: 'subjectKeyIdentifier' }
+      ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
 
@@ -1261,7 +1336,8 @@
       cert.setIssuer(issuer.certObj.subject.attributes);
       cert.setExtensions([
         { name: 'basicConstraints', cA: true, critical: true },
-        { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
+        { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+        { name: 'subjectKeyIdentifier' }
       ]);
 
       await signCertificateWithIssuer(cert, issuer);
@@ -1609,7 +1685,7 @@
 
       if (pem.includes('BEGIN CERTIFICATE REQUEST') || pem.includes('BEGIN NEW CERTIFICATE REQUEST')) {
         const csr = forge.pki.certificationRequestFromPem(pem);
-        let validSig = '❓ Nelze lokálně ověřit';
+        let validSig = '❓ Nelze lokálně ověřit (ECC)';
         try {
           if (typeof csr.verify === 'function' && csr.publicKey && !csr.publicKey.isDummy) {
             validSig = csr.verify() ? '✓ Platný podpis žádosti' : '✕ Neplatný podpis';

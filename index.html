@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>PKI Mega-Toolbox 2.0 | Advanced X.509 Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
@@ -13,7 +16,7 @@
       --text: #f3f4f6; --muted: #9ca3af;
       --accent: #3b82f6; --accent-hover: #2563eb;
       --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
-      --font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font: 'Montserrat', ui-monospace, monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; padding: 30px 15px; }
@@ -499,39 +502,54 @@
 <div id="toast-container"></div>
 
 <script>
-  // --- ROBUSTNÍ ZÁPLATA (PATCH) PRO KNIHOVNU NODE-FORGE ---
-  // Odchytí pád na nepodporované (nebo chybějící) křivce a elegantně zabalí ASN.1 do dummy objektu.
-  // Díky tomu Forge bez problému vytvoří certifikát i vypočítá SubjectKeyIdentifier!
+  // --- KOMPLETNÍ PATCH PRO NODE-FORGE (Podpora ECDSA P-256 / P-384 veřejných klíčů) ---
   if (window.forge && forge.pki) {
     const origPubFrom = forge.pki.publicKeyFromAsn1;
     forge.pki.publicKeyFromAsn1 = function(obj) {
       try {
-        const k = origPubFrom(obj);
-        if (k) return k;
-      } catch(e) {}
-      return { toAsn1: () => obj, isDummy: true };
+        return origPubFrom(obj);
+      } catch(e) {
+        return { rawAsn1: obj, isDummy: true };
+      }
     };
 
     const origPrivFrom = forge.pki.privateKeyFromAsn1;
     forge.pki.privateKeyFromAsn1 = function(obj) {
       try {
-        const k = origPrivFrom(obj);
-        if (k) return k;
-      } catch(e) {}
-      return { toAsn1: () => obj, isDummy: true };
+        return origPrivFrom(obj);
+      } catch(e) {
+        return { rawAsn1: obj, isDummy: true };
+      }
     };
 
     const origPubTo = forge.pki.publicKeyToAsn1;
     forge.pki.publicKeyToAsn1 = function(key) {
-      if (key && key.isDummy && typeof key.toAsn1 === 'function') return key.toAsn1();
+      if (key && key.rawAsn1) return key.rawAsn1;
       return origPubTo(key);
     };
 
     const origPrivTo = forge.pki.privateKeyToAsn1;
     forge.pki.privateKeyToAsn1 = function(key) {
-      if (key && key.isDummy && typeof key.toAsn1 === 'function') return key.toAsn1();
+      if (key && key.rawAsn1) return key.rawAsn1;
       return origPrivTo(key);
     };
+  }
+
+  // Pomocná funkce pro výpočet SubjectKeyIdentifier (RFC 5280: SHA-1 z BIT STRING hodnoty SPKI)
+  function buildSubjectKeyIdentExt(publicKey) {
+    if (publicKey && publicKey.rawAsn1) {
+      try {
+        const spki = publicKey.rawAsn1;
+        // V SubjectPublicKeyInfo (SEQUENCE) je druhý prvek BIT STRING s prvním nulovým bajtem (unused bits)
+        const bitString = spki.value[1].value.slice(1);
+        const md = forge.md.sha1.create();
+        md.update(bitString);
+        return { name: 'subjectKeyIdentifier', subjectKeyIdentifier: md.digest().toHex() };
+      } catch (e) {
+        return null;
+      }
+    }
+    return { name: 'subjectKeyIdentifier' };
   }
 
   // ---- INITIALIZATION & STATE ----
@@ -636,7 +654,7 @@
           keyObj = forge.pki.privateKeyFromPem(item.keyPem);
         }
       } catch (e) {
-          keyObj = { isDummy: true }; 
+        keyObj = { isDummy: true }; 
       }
     }
     return {
@@ -798,7 +816,7 @@
       return { algo: 'ED25519', publicKey: edKeys.publicKey, privateKey: edKeys.privateKey, keyPem: pseudoPem, edSeedHex: seedHex };
     }
 
-    // ECDSA (P-256, P-384) s použitím WebCrypto
+    // ECDSA (P-256, P-384) přes WebCrypto API
     if (algoSpec.startsWith('ECDSA-')) {
       if (!window.crypto || !window.crypto.subtle) throw new Error('WebCrypto API není k dispozici. Aplikace musí běžet přes HTTPS (nebo na localhost).');
       const curve = algoSpec.replace('ECDSA-', '');
@@ -813,12 +831,17 @@
       
       const pubPem = arrayBufferToPem(spkiBuf, 'PUBLIC KEY');
       const keyPem = arrayBufferToPem(pkcs8Buf, 'PRIVATE KEY');
+
+      // Převedeme SPKI ArrayBuffer na Forge ASN.1 objekt napřímo přes ByteBuffer
+      const spkiBytes = new Uint8Array(spkiBuf);
+      let spkiBinStr = '';
+      for (let i = 0; i < spkiBytes.length; i++) spkiBinStr += String.fromCharCode(spkiBytes[i]);
+      const spkiAsn1 = forge.asn1.fromDer(forge.util.createBuffer(spkiBinStr));
       
-      // Node-forge přečte PEM přes náš Patch naprosto čistě, vrátí Dummy objekt bez pádů a stringů!
       return {
         algo: algoSpec,
-        publicKey: pki.publicKeyFromPem(pubPem),
-        privateKey: pki.privateKeyFromPem(keyPem),
+        publicKey: { rawAsn1: spkiAsn1, isDummy: true },
+        privateKey: { isDummy: true },
         keyPem: keyPem
       };
     }
@@ -867,8 +890,7 @@
   async function signEcdsaWebCrypto(tbsDerString, keyPem, curve) {
     const hashAlg = curve === 'P-384' ? 'SHA-384' : 'SHA-256';
     
-    // Extrakce a import Base64 klíče do enginu prohlížeče
-    const b64 = keyPem.replace(/(-----(BEGIN|END).*-----|\n)/g, '');
+    const b64 = keyPem.replace(/(-----(BEGIN|END).*-----|\s)/g, '');
     const bin = window.atob(b64);
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
@@ -880,37 +902,34 @@
     );
 
     const tbsBuf = new Uint8Array(tbsDerString.length);
-    for(let i=0; i<tbsDerString.length; i++) tbsBuf[i] = tbsDerString.charCodeAt(i);
+    for (let i = 0; i < tbsDerString.length; i++) tbsBuf[i] = tbsDerString.charCodeAt(i);
 
-    // Podepsání
     const rawSig = await window.crypto.subtle.sign(
       { name: 'ECDSA', hash: { name: hashAlg } },
       cryptoKey,
       tbsBuf
     );
 
-    // Konverze surových bytu R a S do ASN.1 formátu požadovaného pro certifikáty X.509
+    // Konverze IEEE P1363 (R|S) podpisu do X.509 ASN.1 SEQUENCE (INTEGER r, INTEGER s)
     const sigBytes = new Uint8Array(rawSig);
-    const rBytes = sigBytes.subarray(0, sigBytes.length / 2);
-    const sBytes = sigBytes.subarray(sigBytes.length / 2);
+    const half = sigBytes.length / 2;
+    const rBytes = sigBytes.subarray(0, half);
+    const sBytes = sigBytes.subarray(half);
     
-    const toDerInt = (bytes) => {
+    const toDerIntBytes = (bytes) => {
       let i = 0;
       while (i < bytes.length - 1 && bytes[i] === 0) i++;
-      let res = new Uint8Array(bytes.length - i);
-      res.set(bytes.subarray(i));
-      // ASN.1 Integer - pokud nejvyšší bit svítí (0x80), je nutné přidat vodící nulu (0x00)
-      if (res[0] & 0x80) {
-        let temp = new Uint8Array(res.length + 1);
-        temp[0] = 0x00; temp.set(res, 1); res = temp;
-      }
-      return forge.util.createBuffer(res).getBytes();
+      let slice = bytes.subarray(i);
+      let str = '';
+      if (slice[0] & 0x80) str += '\x00';
+      for (let j = 0; j < slice.length; j++) str += String.fromCharCode(slice[j]);
+      return str;
     };
 
     const asn1 = forge.asn1;
     const sigAsn1 = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
-      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, toDerInt(rBytes)),
-      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, toDerInt(sBytes))
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, toDerIntBytes(rBytes)),
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, toDerIntBytes(sBytes))
     ]);
 
     return forge.asn1.toDer(sigAsn1).getBytes();
@@ -919,14 +938,20 @@
   async function signCertificateWithIssuer(cert, issuerItem, isSelfSigned = false) {
     const issuerAlgo = issuerItem.algo || 'RSA-2048';
     const issuerKeyObj = isSelfSigned ? issuerItem.privateKey : issuerItem.keyObj;
-    const issuerKeyPem = isSelfSigned ? issuerItem.keyPem : issuerItem.keyPem;
+    const issuerKeyPem = issuerItem.keyPem;
 
     if (issuerAlgo === 'ED25519') {
       cert.sign(issuerKeyObj);
     } else if (issuerAlgo.startsWith('ECDSA-')) {
       const curve = issuerAlgo.replace('ECDSA-', '');
-      cert.signatureOid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
-      cert.signatureParameters = null;
+      const oid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
+      
+      // KLÍČOVÁ OPRAVA: Musíme nastavit jak cert.signatureOid, tak cert.siginfo.algorithmOid!
+      cert.signatureOid = oid;
+      cert.signatureParameters = undefined;
+      cert.siginfo = cert.siginfo || {};
+      cert.siginfo.algorithmOid = oid;
+      cert.siginfo.parameters = undefined;
       
       const tbs = forge.pki.getTbsCertificate(cert);
       const tbsDer = forge.asn1.toDer(tbs).getBytes();
@@ -971,7 +996,10 @@
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
       ];
       
-      if (keyMat.algo !== 'ED25519') exts.push({ name: 'subjectKeyIdentifier' });
+      if (keyMat.algo !== 'ED25519') {
+        const ski = buildSubjectKeyIdentExt(keyMat.publicKey);
+        if (ski) exts.push(ski);
+      }
       cert.setExtensions(exts);
 
       await signCertificateWithIssuer(cert, keyMat, true);
@@ -1021,7 +1049,10 @@
         basicCons,
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
       ];
-      if (keyMat.algo !== 'ED25519') exts.push({ name: 'subjectKeyIdentifier' });
+      if (keyMat.algo !== 'ED25519') {
+        const ski = buildSubjectKeyIdentExt(keyMat.publicKey);
+        if (ski) exts.push(ski);
+      }
       cert.setExtensions(exts);
 
       await signCertificateWithIssuer(cert, issuer);
@@ -1112,6 +1143,10 @@
 
       const exts = [ { name: 'basicConstraints', cA: false, critical: true }, kuObj, ekuObj ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
+      if (keyMat.algo !== 'ED25519') {
+        const ski = buildSubjectKeyIdentExt(keyMat.publicKey);
+        if (ski) exts.push(ski);
+      }
       cert.setExtensions(exts);
 
       await signCertificateWithIssuer(cert, issuer);
@@ -1142,13 +1177,6 @@
     }
     try {
       const csr = forge.pki.certificationRequestFromPem(pem);
-      let validSig = '❓ Nelze lokálně ověřit';
-      try {
-        if (typeof csr.verify === 'function' && csr.publicKey && !csr.publicKey.isDummy) {
-          validSig = csr.verify() ? '✓ Platný podpis žádosti' : '✕ Neplatný podpis';
-        }
-      } catch(e) {}
-      
       parsedCsrObj = csr;
       const cnAttr = csr.subject.getField('CN');
       document.getElementById('csr-cn').value = cnAttr ? cnAttr.value : 'csr-klient.local';
@@ -1192,7 +1220,7 @@
       if (document.getElementById('csr-eku-email').checked) ekuObj.emailProtection = true;
       if (document.getElementById('csr-eku-code').checked) ekuObj.codeSigning = true;
 
-      const isRsaPublicKey = !!parsedCsrObj.publicKey.n;
+      const isRsaPublicKey = !!(parsedCsrObj.publicKey && parsedCsrObj.publicKey.n);
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRsaPublicKey) kuObj.keyEncipherment = true;
 
@@ -1275,42 +1303,24 @@
 
   async function downloadCRL(caId) {
     const ca = store.find(i => i.id === caId);
-    if (!ca || !ca.keyObj) return showToast('CA nemá privátní klíč pro podpis CRL!', 'error');
+    if (!ca || !ca.keyPem) return showToast('CA nemá privátní klíč pro podpis CRL!', 'error');
 
     try {
       const revokedChildren = store.filter(i => i.issuerId === ca.id && i.id !== ca.id && i.revoked);
 
-      if (typeof forge.pki.createCRL === 'function' && !ca.algo.startsWith('ECDSA-')) {
-        const crl = forge.pki.createCRL();
-        crl.issuer = ca.certObj.subject;
-        crl.thisUpdate = new Date();
-        crl.nextUpdate = new Date(Date.now() + 30 * 86400000);
-        
-        revokedChildren.forEach(rc => {
-          crl.addRevokedCert({ serialNumber: rc.certObj.serialNumber, revocationDate: new Date(rc.revocationDate) });
-        });
-
-        if (ca.algo === 'ED25519') crl.sign(ca.keyObj);
-        else crl.sign(ca.keyObj, forge.md.sha256.create());
-
-        const pem = forge.pki.crlToPem(crl);
-        downloadFile(ca.name.replace(/\s+/g, '_') + '.crl.pem', pem);
-        return showToast(`CRL pro "${ca.name}" vygenerován (${revokedChildren.length} revokovaných).`, 'success');
-      } 
-      
       const asn1 = forge.asn1;
       const pki = forge.pki;
       const now = new Date();
       const next = new Date(now.getTime() + 30 * 86400000);
       
-      const isEcdsa = ca.algo.startsWith('ECDSA-');
+      const isEcdsa = ca.algo && ca.algo.startsWith('ECDSA-');
       const curve = isEcdsa ? ca.algo.replace('ECDSA-', '') : null;
       
       const sigOid = ca.algo === 'ED25519' ? '1.3.101.112' : 
                      isEcdsa ? (curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2') :
                      pki.oids.sha256WithRSAEncryption;
       
-      const algParams = isEcdsa ? [] : [asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '')];
+      const algParams = (isEcdsa || ca.algo === 'ED25519') ? [] : [asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '')];
       const algId = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
         asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer(sigOid).getBytes()),
         ...algParams
@@ -1340,8 +1350,12 @@
       const tbsDerBytes = asn1.toDer(tbsCertList).getBytes();
 
       let signatureBytes;
-      if (isEcdsa) signatureBytes = await signEcdsaWebCrypto(tbsDerBytes, ca.keyPem, curve);
-      else {
+      if (ca.algo === 'ED25519') {
+        const sigUint8 = pki.ed25519.sign({ message: tbsDerBytes, encoding: 'binary', privateKey: ca.keyObj });
+        signatureBytes = forge.util.createBuffer(sigUint8).getBytes();
+      } else if (isEcdsa) {
+        signatureBytes = await signEcdsaWebCrypto(tbsDerBytes, ca.keyPem, curve);
+      } else {
         const md = forge.md.sha256.create();
         md.update(tbsDerBytes);
         signatureBytes = ca.keyObj.sign(md);
@@ -1351,7 +1365,7 @@
         tbsCertList, algId, asn1.create(asn1.Class.UNIVERSAL, asn1.Type.BITSTRING, false, '\x00' + signatureBytes)
       ]);
 
-      const crlPem = pki.pemToDer ? forge.pem.encode({ type: 'X509 CRL', body: asn1.toDer(crlAsn1).getBytes() }) : '';
+      const crlPem = forge.pem.encode({ type: 'X509 CRL', body: asn1.toDer(crlAsn1).getBytes() });
       downloadFile(ca.name.replace(/\s+/g, '_') + '.crl.pem', crlPem);
       showToast(`CRL seznam pro "${ca.name}" stažen (${revokedChildren.length} zneplatněných certifikátů).`, 'success');
       

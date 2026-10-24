@@ -246,7 +246,7 @@
           <span class="help-text">Hlavní název autority, který se zobrazí v prohlížeči uživatele.</span>
         </div>
         <div><label>Organizace (O)</label><input type="text" id="r-o" value="CyberCorp Ltd."></div>
-        <div><label>Org. jednotka (OU)</label><input type="text" id="r-ou" value="Certifikacni Autorita"></div>
+        <div><label>Org. jednotka (OU)</label><input type="text" id="r-ou" placeholder="se nepoužívá"></div>
         <div><label>Země (C)</label><input type="text" id="r-c" value="CZ"></div>
         <div><label>Město (L)</label><input type="text" id="r-l" value="Praha"></div>
         <div>
@@ -595,7 +595,7 @@
           const seed = forge.util.hexToBytes(item.edSeedHex);
           keyObj = forge.pki.ed25519.generateKeyPair({ seed }).privateKey;
         } else {
-          // Forge umí bez problému naparsovat PKCS#8 ECDSA (P-256, P-384) klíče
+          // Forge umí bez problému naparsovat PKCS#8 ECDSA (P-256, P-384) klíče do objektu
           keyObj = forge.pki.privateKeyFromPem(item.keyPem);
         }
       } catch (e) {}
@@ -761,12 +761,12 @@
 
     // ECDSA (P-256, P-384)
     if (algoSpec.startsWith('ECDSA-')) {
-      const curve = algoSpec.split('-')[1]; // 'P-256' nebo 'P-384'
+      const curve = algoSpec.replace('ECDSA-', ''); // OPRAVA: bezpečné extrahování názvu (vrátí P-256 nebo P-384)
       const webKey = await window.crypto.subtle.generateKey(
         { name: "ECDSA", namedCurve: curve },
         true, ["sign", "verify"]
       );
-      // Export do PKCS#8 a SPKI pro načtení do Forge
+      // Export do PKCS#8 a SPKI pro načtení hlaviček do Forge
       const pkcs8Buf = await window.crypto.subtle.exportKey('pkcs8', webKey.privateKey);
       const spkiBuf = await window.crypto.subtle.exportKey('spki', webKey.publicKey);
       const keyPem = arrayBufferToPem(pkcs8Buf, 'PRIVATE KEY');
@@ -820,14 +820,76 @@
     return cert;
   }
 
-  function signCertificateWithIssuer(cert, issuerKey, issuerAlgo) {
+  // ---- NOVÝ WEBCRYPTO ECDSA SIGNING WORKAROUND (Problém chybějící podpory u Forge) ----
+  async function signEcdsaWebCrypto(tbsDerString, keyPem, curve) {
+    const hashAlg = curve === 'P-384' ? 'SHA-384' : 'SHA-256';
+    
+    // Import PEM privátního klíče z úložiště zpět do nativního formátu prohlížeče
+    const b64 = keyPem.replace(/(-----(BEGIN|END).*-----|\n)/g, '');
+    const bin = window.atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    
+    const cryptoKey = await window.crypto.subtle.importKey(
+      'pkcs8', buf.buffer,
+      { name: 'ECDSA', namedCurve: curve },
+      false, ['sign']
+    );
+
+    const tbsBuf = new Uint8Array(tbsDerString.length);
+    for(let i=0; i<tbsDerString.length; i++) tbsBuf[i] = tbsDerString.charCodeAt(i);
+
+    // Bleskový podpis přes jádro prohlížeče
+    const rawSig = await window.crypto.subtle.sign(
+      { name: 'ECDSA', hash: { name: hashAlg } },
+      cryptoKey,
+      tbsBuf
+    );
+
+    // Převod surového (Raw R|S) podpisu na standard ASN.1 (zajišťuje kompatibilitu certifikátů)
+    const sigBytes = new Uint8Array(rawSig);
+    const rBytes = sigBytes.subarray(0, sigBytes.length / 2);
+    const sBytes = sigBytes.subarray(sigBytes.length / 2);
+    
+    const toDerInt = (bytes) => {
+      let i = 0;
+      while (i < bytes.length - 1 && bytes[i] === 0) i++;
+      let res = new Uint8Array(bytes.length - i);
+      res.set(bytes.subarray(i));
+      if (res[0] & 0x80) {
+        let temp = new Uint8Array(res.length + 1);
+        temp[0] = 0x00; temp.set(res, 1); res = temp;
+      }
+      return forge.util.createBuffer(res).getBytes();
+    };
+
+    const asn1 = forge.asn1;
+    const sigAsn1 = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, toDerInt(rBytes)),
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, toDerInt(sBytes))
+    ]);
+
+    return forge.asn1.toDer(sigAsn1).getBytes();
+  }
+
+  async function signCertificateWithIssuer(cert, issuerItem, isSelfSigned = false) {
+    const issuerAlgo = issuerItem.algo || 'RSA-2048';
+    const issuerKeyObj = isSelfSigned ? issuerItem.privateKey : issuerItem.keyObj;
+    const issuerKeyPem = isSelfSigned ? issuerItem.keyPem : issuerItem.keyPem;
+
     if (issuerAlgo === 'ED25519') {
-      cert.sign(issuerKey);
-    } else if (issuerAlgo === 'ECDSA-P-384') {
-      cert.sign(issuerKey, forge.md.sha384.create());
+      cert.sign(issuerKeyObj);
+    } else if (issuerAlgo.startsWith('ECDSA-')) {
+      const curve = issuerAlgo.replace('ECDSA-', '');
+      cert.signatureOid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
+      cert.signatureParameters = null; // RFC 3279 specifikuje, že pro ECDSA musí chybět parametry (žádný NULL padding)
+      
+      const tbs = forge.pki.getTbsCertificate(cert);
+      const tbsDer = forge.asn1.toDer(tbs).getBytes();
+      
+      cert.signature = await signEcdsaWebCrypto(tbsDer, issuerKeyPem, curve);
     } else {
-      // RSA nebo ECDSA P-256
-      cert.sign(issuerKey, forge.md.sha256.create());
+      cert.sign(issuerKeyObj, forge.md.sha256.create());
     }
   }
 
@@ -865,11 +927,10 @@
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
       ];
       
-      // ED25519 ve Forge nativně ne vždy podporuje subjectKeyIdentifier generování
       if (keyMat.algo !== 'ED25519') exts.push({ name: 'subjectKeyIdentifier' });
       cert.setExtensions(exts);
 
-      signCertificateWithIssuer(cert, keyMat.privateKey, keyMat.algo);
+      await signCertificateWithIssuer(cert, keyMat, true);
 
       const id = idCounter++;
       saveItem({
@@ -919,7 +980,7 @@
       if (keyMat.algo !== 'ED25519') exts.push({ name: 'subjectKeyIdentifier' });
       cert.setExtensions(exts);
 
-      signCertificateWithIssuer(cert, issuer.keyObj, issuer.algo);
+      await signCertificateWithIssuer(cert, issuer);
 
       saveItem({
         id: idCounter++, type: 'inter', name: cn, issuerId: issuer.id,
@@ -1010,7 +1071,7 @@
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
 
-      signCertificateWithIssuer(cert, issuer.keyObj, issuer.algo);
+      await signCertificateWithIssuer(cert, issuer);
 
       saveItem({
         id: idCounter++, type: 'leaf', name: cn, issuerId: issuer.id,
@@ -1061,7 +1122,7 @@
     }
   }
 
-  function signCsrRequest() {
+  async function signCsrRequest() {
     if (!parsedCsrObj) return showToast('Nejprve vložte platné CSR!', 'error');
     const issuerId = parseInt(document.getElementById('csr-issuer').value);
     if (!issuerId) return showToast('Vyberte vystavující CA!', 'error');
@@ -1083,7 +1144,7 @@
       if (document.getElementById('csr-eku-email').checked) ekuObj.emailProtection = true;
       if (document.getElementById('csr-eku-code').checked) ekuObj.codeSigning = true;
 
-      // CSR Key Usage Check: Zkontrolujeme, zda je v CSR uložen RSA klíč (má 'n' parametr)
+      // Zjistíme jestli je uvnitř žádosti nahrán RSA klíč a podle toho obsloužíme EKU atributy
       const isRsaPublicKey = !!parsedCsrObj.publicKey.n;
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRsaPublicKey) kuObj.keyEncipherment = true;
@@ -1092,7 +1153,7 @@
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
 
-      signCertificateWithIssuer(cert, issuer.keyObj, issuer.algo);
+      await signCertificateWithIssuer(cert, issuer);
 
       saveItem({
         id: idCounter++, type: 'leaf', name: `[CSR] ${cn}`, issuerId: issuer.id,
@@ -1108,7 +1169,7 @@
     }
   }
 
-  function crossSign() {
+  async function crossSign() {
     const targetId = parseInt(document.getElementById('c-target').value);
     const issuerId = parseInt(document.getElementById('c-issuer').value);
     if (!targetId || !issuerId) return showToast('Vyberte cílovou CA a nového vystavitele!', 'error');
@@ -1128,7 +1189,7 @@
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
       ]);
 
-      signCertificateWithIssuer(cert, issuer.keyObj, issuer.algo);
+      await signCertificateWithIssuer(cert, issuer);
 
       saveItem({
         id: idCounter++, type: 'cross', name: `[Cross] ${target.name}`, issuerId: issuer.id, crossTargetId: target.id,
@@ -1157,29 +1218,34 @@
     showToast(`Certifikát "${item.name}" byl zneplatněn.`, 'info');
   }
 
-  function downloadCRL(caId) {
+  function dateToUtcTimeAsn1(date) {
+    const asn1 = forge.asn1;
+    const pad = n => (n < 10 ? '0' + n : '' + n);
+    const str = pad(date.getUTCFullYear() % 100) + pad(date.getUTCMonth() + 1) + pad(date.getUTCDate()) +
+                pad(date.getUTCHours()) + pad(date.getUTCMinutes()) + pad(date.getUTCSeconds()) + 'Z';
+    return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.UTCTIME, false, str);
+  }
+
+  async function downloadCRL(caId) {
     const ca = store.find(i => i.id === caId);
     if (!ca || !ca.keyObj) return showToast('CA nemá privátní klíč pro podpis CRL!', 'error');
 
     try {
       const revokedChildren = store.filter(i => i.issuerId === ca.id && i.id !== ca.id && i.revoked);
 
-      if (typeof forge.pki.createCRL === 'function') {
+      // Pokud máme starší verzi Forge bez funkčního ECDSA, obsloužíme celou strukturu CRL manuálně
+      if (typeof forge.pki.createCRL === 'function' && !ca.algo.startsWith('ECDSA-')) {
         const crl = forge.pki.createCRL();
         crl.issuer = ca.certObj.subject;
         crl.thisUpdate = new Date();
         crl.nextUpdate = new Date(Date.now() + 30 * 86400000);
         
-        // Specifické přidávání sériových čísel (Forge API pro CRL)
         revokedChildren.forEach(rc => {
           crl.addRevokedCert({ serialNumber: rc.certObj.serialNumber, revocationDate: new Date(rc.revocationDate) });
         });
 
-        // Podpis podle algoritmu CA
         if (ca.algo === 'ED25519') {
           crl.sign(ca.keyObj);
-        } else if (ca.algo === 'ECDSA-P-384') {
-          crl.sign(ca.keyObj, forge.md.sha384.create());
         } else {
           crl.sign(ca.keyObj, forge.md.sha256.create());
         }
@@ -1188,7 +1254,67 @@
         downloadFile(ca.name.replace(/\s+/g, '_') + '.crl.pem', pem);
         return showToast(`CRL pro "${ca.name}" vygenerován (${revokedChildren.length} revokovaných).`, 'success');
       } else {
-        showToast('Vaše verze Forge nepodporuje generování CRL!', 'error');
+        // MANUÁLNÍ KONSTRUKCE PRO ECDSA
+        const asn1 = forge.asn1;
+        const pki = forge.pki;
+        const now = new Date();
+        const next = new Date(now.getTime() + 30 * 86400000);
+        const isEcdsa = ca.algo.startsWith('ECDSA-');
+        const curve = isEcdsa ? ca.algo.replace('ECDSA-', '') : null;
+        
+        const sigOid = ca.algo === 'ED25519' ? '1.3.101.112' : 
+                       isEcdsa ? (curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2') :
+                       pki.oids.sha256WithRSAEncryption;
+        
+        // Zamezíme zápisu prázdných NULL parametrů, pokud operujeme s ECDSA (striktní shoda s RFC 3279)
+        const algParams = isEcdsa ? [] : [asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '')];
+        const algId = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer(sigOid).getBytes()),
+          ...algParams
+        ]);
+
+        const revokedSeqItems = revokedChildren.map(rc => {
+          let hexSerial = (rc.certObj?.serialNumber || '01').replace(/[^0-9a-fA-F]/g, '');
+          if (hexSerial.length % 2 !== 0) hexSerial = '0' + hexSerial;
+          const serialBytes = forge.util.hexToBytes(hexSerial);
+          const revDate = rc.revocationDate ? new Date(rc.revocationDate) : now;
+          return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+            asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, serialBytes),
+            dateToUtcTimeAsn1(revDate)
+          ]);
+        });
+
+        const tbsFields = [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, '\x01'),
+          algId, pki.distinguishedNameToAsn1(ca.certObj.subject),
+          dateToUtcTimeAsn1(now), dateToUtcTimeAsn1(next)
+        ];
+        if (revokedSeqItems.length > 0) {
+          tbsFields.push(asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, revokedSeqItems));
+        }
+
+        const tbsCertList = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, tbsFields);
+        const tbsDerBytes = asn1.toDer(tbsCertList).getBytes();
+
+        let signatureBytes;
+        if (ca.algo === 'ED25519') {
+          signatureBytes = pki.ed25519.sign({ message: tbsDerBytes, privateKey: ca.keyObj });
+        } else if (isEcdsa) {
+          // Navázáno na nový modul WebCrypto podepisování
+          signatureBytes = await signEcdsaWebCrypto(tbsDerBytes, ca.keyPem, curve);
+        } else {
+          const md = forge.md.sha256.create();
+          md.update(tbsDerBytes);
+          signatureBytes = ca.keyObj.sign(md);
+        }
+
+        const crlAsn1 = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          tbsCertList, algId, asn1.create(asn1.Class.UNIVERSAL, asn1.Type.BITSTRING, false, '\x00' + signatureBytes)
+        ]);
+
+        const crlPem = pki.pemToDer ? forge.pem.encode({ type: 'X509 CRL', body: asn1.toDer(crlAsn1).getBytes() }) : '';
+        downloadFile(ca.name.replace(/\s+/g, '_') + '.crl.pem', crlPem);
+        showToast(`CRL seznam pro "${ca.name}" stažen (${revokedChildren.length} zneplatněných certifikátů).`, 'success');
       }
     } catch (err) {
       showToast('Chyba při generování CRL: ' + err.message, 'error');
@@ -1341,7 +1467,6 @@
 
   function downloadP12(id) {
     const item = store.find(i => i.id === id);
-    // Povolujeme export pro RSA a standardní EC křivky, u ED25519 bývá ve starších systémech přes P12 s kompatibilitou problém
     if (!item.keyObj || item.algo === 'ED25519') return showToast('Export PKCS#12 vyžaduje přítomný RSA nebo ECDSA privátní klíč.', 'error');
     
     const password = prompt("Zadejte heslo pro exportovaný .p12 (.pfx) kontejner:", "123456");
@@ -1371,7 +1496,7 @@
       a.click();
       showToast('Kontejner PKCS#12 (.p12) úspěšně vygenerován.', 'success');
     } catch (err) {
-      showToast('Chyba při exportu P12 (Pravděpodobně kvůli křivce): ' + err.message, 'error');
+      showToast('Chyba při exportu P12 (Pravděpodobně nekompatibilita křivky s PKCS12): ' + err.message, 'error');
     }
   }
 

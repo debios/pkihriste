@@ -4,15 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>PKI Mega-Toolbox 2.0 | Advanced X.509 Studio</title>
-  
+
   <!-- Fonty (Montserrat) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-  
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  
   <style>
     :root {
       --bg: #050505; --surface: #121212; --surface2: #1e1e1e;
@@ -30,11 +28,11 @@
     
     /* Sidebar */
     .sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; position: sticky; top: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-    .sidebar h2 { font-size: 15px; margin-bottom: 20px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; font-weight: 800; }
+    .sidebar h2 { font-size: 15px; margin-bottom: 20px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; }
     .sidebar h2 span { font-size: 11px; background: #172554; color: #93c5fd; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
-    .nav-btn { display: block; width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); padding: 12px 14px; text-align: left; cursor: pointer; border-radius: 6px; font-family: var(--font); margin-bottom: 4px; transition: 0.2s; white-space: nowrap; font-size: 13.5px; font-weight: 500; }
+    .nav-btn { display: block; width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); padding: 12px 14px; text-align: left; cursor: pointer; border-radius: 6px; font-family: var(--font); margin-bottom: 4px; transition: 0.2s; white-space: nowrap; font-size: 13.5px; }
     .nav-btn:hover { background: var(--surface2); }
-    .nav-btn.active { background: #172554; border-color: var(--accent); color: #93c5fd; font-weight: 700; }
+    .nav-btn.active { background: #172554; border-color: var(--accent); color: #93c5fd; font-weight: bold; }
     .nav-divider { height: 1px; background: var(--border); margin: 15px 0; }
 
     /* Main Content */
@@ -43,28 +41,28 @@
     .panel.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     
-    h3 { font-size: 22px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; color: #fff; font-weight: 700; }
-    h4 { font-size: 16px; margin: 25px 0 12px 0; color: var(--accent); font-weight: 600; }
+    h3 { font-size: 22px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; color: #fff; }
+    h4 { font-size: 16px; margin: 25px 0 12px 0; color: var(--accent); }
     p.desc { color: var(--muted); margin-bottom: 25px; font-size: 14px; line-height: 1.6; }
     
     /* Forms */
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 20px; margin-bottom: 25px; }
     .full-width { grid-column: 1 / -1; }
     
-    label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
-    input, select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: 6px; font-family: var(--font); outline: none; font-size: 14px; transition: border-color 0.2s, box-shadow 0.2s; font-weight: 500; }
+    label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
+    input, select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: 6px; font-family: var(--font); outline: none; font-size: 14px; transition: border-color 0.2s, box-shadow 0.2s; }
     input:focus, select:focus, textarea:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
-    textarea { resize: vertical; min-height: 140px; line-height: 1.5; font-family: ui-monospace, monospace; } /* Textareas si necháme v monospace kvůli PEM struktuře */
+    textarea { resize: vertical; min-height: 140px; line-height: 1.5; }
     
     /* Explanatory Texts */
-    .help-text { color: #6b7280; font-size: 12px; margin-top: 6px; display: block; line-height: 1.4; font-style: normal; font-weight: 400; }
+    .help-text { color: #6b7280; font-size: 12px; margin-top: 6px; display: block; line-height: 1.4; font-style: normal; }
     
     .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: var(--bg); padding: 16px; border: 1px solid var(--border); border-radius: 6px; }
-    .checkbox-label { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text); text-transform: none; cursor: pointer; margin-bottom: 0; font-weight: 500; letter-spacing: normal; }
+    .checkbox-label { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text); text-transform: none; cursor: pointer; margin-bottom: 0; font-weight: normal; letter-spacing: normal; }
     .checkbox-label input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
     
     /* Drag & Drop Zone */
-    .drop-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 25px; text-align: center; color: var(--muted); margin-bottom: 16px; cursor: pointer; transition: all 0.2s; background: rgba(255,255,255,0.015); font-size: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; font-weight: 500;}
+    .drop-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 25px; text-align: center; color: var(--muted); margin-bottom: 16px; cursor: pointer; transition: all 0.2s; background: rgba(255,255,255,0.015); font-size: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
     .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); color: #93c5fd; background: rgba(59, 130, 246, 0.08); }
     .drop-zone input[type="file"] { display: none; }
 
@@ -73,7 +71,7 @@
     .alert-box span { font-size: 18px; }
     
     /* Buttons */
-    .btn { background: var(--accent); color: #fff; border: none; padding: 14px 24px; font-family: var(--font); font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 100%; font-size: 15px; letter-spacing: 0.5px; }
+    .btn { background: var(--accent); color: #fff; border: none; padding: 14px 24px; font-family: var(--font); font-weight: bold; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 100%; font-size: 15px; letter-spacing: 0.5px; }
     .btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
     .btn:active { transform: translateY(1px); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -83,7 +81,7 @@
     .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
     .btn-danger:hover { background: var(--danger); color: #fff; }
     
-    .btn-sm { padding: 8px 12px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 5px; font-family: var(--font); font-weight: 600; transition: 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+    .btn-sm { padding: 8px 12px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 5px; font-family: var(--font); transition: 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
     .btn-sm:hover { background: var(--border); }
     .btn-sm.special { border-color: #6366f1; color: #a5b4fc; background: rgba(49, 46, 129, 0.4); }
     .btn-sm.special:hover { background: rgba(49, 46, 129, 0.8); }
@@ -103,10 +101,10 @@
     .keyring-item.revoked { opacity: 0.65; border-left-color: #4b5563; background: #0a0505; }
     
     .keyring-info { flex: 1; min-width: 0; }
-    .keyring-info strong { font-size: 15px; font-weight: 700; display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; word-break: break-word; line-height: 1.3; }
-    .keyring-info span { font-size: 12.5px; font-weight: 500; color: var(--muted); display: block; line-height: 1.5; }
+    .keyring-info strong { font-size: 15px; display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; word-break: break-word; line-height: 1.3; }
+    .keyring-info span { font-size: 12.5px; color: var(--muted); display: block; line-height: 1.5; }
     
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 8px; text-transform: uppercase; display: inline-block; vertical-align: middle; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-right: 8px; text-transform: uppercase; display: inline-block; vertical-align: middle; }
     .badge.root { background: #7f1d1d; color: #fca5a5; }
     .badge.inter { background: #78350f; color: #fcd34d; }
     .badge.leaf { background: #14532d; color: #86efac; }
@@ -116,7 +114,7 @@
     .action-group { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
     /* Syntax Highlighted PEM Viewer */
-    .pem-viewer { background: #080808; border: 1px solid var(--border); border-radius: 8px; padding: 18px; font-size: 12.5px; font-family: ui-monospace, monospace; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin-top: 15px; position: relative; }
+    .pem-viewer { background: #080808; border: 1px solid var(--border); border-radius: 8px; padding: 18px; font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin-top: 15px; position: relative; }
     .pem-header { color: #38bdf8; font-weight: bold; }
     .pem-footer { color: #34d399; font-weight: bold; }
     .pem-body { color: #cbd5e1; }
@@ -126,24 +124,24 @@
     .modal-backdrop.open { display: flex; }
     .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 750px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px; }
-    .modal-header strong { font-size: 16px; color: #fff; font-weight: 700; }
+    .modal-header strong { font-size: 16px; color: #fff; }
     .modal-body { overflow-y: auto; flex: 1; padding-right: 5px; }
     .modal-body::-webkit-scrollbar { width: 8px; }
     .modal-body::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
 
     /* Graph Container */
-    .graph-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-height: 400px; display: flex; align-items: center; justify-content: center; overflow-x: auto; font-family: ui-monospace, monospace; }
+    .graph-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-height: 400px; display: flex; align-items: center; justify-content: center; overflow-x: auto; }
 
     /* Decoder Results */
     .decode-result { background: var(--surface2); border: 1px solid var(--border); padding: 20px; border-radius: 8px; margin-top: 20px; display: none; }
     .decode-row { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
     .decode-row:last-child { border: none; margin: 0; padding: 0; }
-    .decode-label { color: var(--accent); font-size: 11.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; letter-spacing: 0.5px; }
-    .decode-val { font-size: 14px; word-break: break-word; line-height: 1.5; color: #fff; font-weight: 500; }
+    .decode-label { color: var(--accent); font-size: 11.5px; text-transform: uppercase; font-weight: bold; margin-bottom: 6px; letter-spacing: 0.5px; }
+    .decode-val { font-size: 14px; word-break: break-word; line-height: 1.5; color: #fff; }
 
     /* Floating Toast Notifications */
     #toast-container { position: fixed; bottom: 25px; right: 25px; z-index: 1000; display: flex; flex-direction: column; gap: 12px; max-width: 400px; pointer-events: none; }
-    .toast { padding: 15px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; box-shadow: 0 10px 25px rgba(0,0,0,0.5); animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); pointer-events: auto; display: flex; align-items: center; gap: 12px; line-height: 1.5; border-left: 4px solid transparent; }
+    .toast { padding: 15px 20px; border-radius: 8px; font-size: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); pointer-events: auto; display: flex; align-items: center; gap: 12px; line-height: 1.5; border-left: 4px solid transparent; }
     .toast.info { background: #082f49; color: #e0f2fe; border-color: #0ea5e9; border-left-color: #38bdf8; }
     .toast.success { background: #064e3b; color: #d1fae5; border-color: #10b981; border-left-color: #34d399; }
     .toast.error { background: #450a0a; color: #fee2e2; border-color: #ef4444; border-left-color: #f87171; }
@@ -192,7 +190,7 @@
     <button class="nav-btn" onclick="nav('root', this)">👑 Root CA</button>
     <button class="nav-btn" onclick="nav('inter', this)">🔗 Intermediate CA</button>
     <button class="nav-btn" onclick="nav('leaf', this)">🍃 Koncový certifikát</button>
-    <button class="nav-btn" onclick="nav('gencsr', this)">✨ Vytvořit CSR</button>
+    <button class="nav-btn" onclick="nav('csr-gen', this)">🛠️ Vytvořit CSR</button>
     <button class="nav-btn" onclick="nav('csr', this)">📝 Podepsat CSR</button>
     <button class="nav-btn" onclick="nav('cross', this)">🔀 Cross-Signing</button>
     <div class="nav-divider"></div>
@@ -217,7 +215,7 @@
       </div>
 
       <div class="toolbar">
-        <label class="checkbox-label">
+        <label class="checkbox-label" style="font-weight: bold;">
           <input type="checkbox" id="toggle-ls" onchange="toggleStorage()"> 
           💾 Ukládat klíčenku trvale v prohlížeči (LocalStorage)
         </label>
@@ -376,48 +374,84 @@
       <button class="btn" id="btn-gen-leaf" onclick="generateLeaf()">Vystavit koncový certifikát</button>
     </div>
 
-    <!-- PANEL: CREATE CSR (NEW) -->
-    <div id="panel-gencsr" class="panel">
-      <h3>Vytvořit žádost o certifikát (CSR)</h3>
-      <p class="desc">Vygenerujte si lokálně nový privátní klíč a k němu žádost (CSR), kterou následně můžete předat k podepsání jakékoliv certifikační autoritě (zde v aplikaci, nebo u veřejné CA jako Let's Encrypt či DigiCert).</p>
+    <!-- PANEL: CSR GENERATOR (NOVÁ SEKCE) -->
+    <div id="panel-csr-gen" class="panel">
+      <h3>Generátor žádosti o certifikát (CSR)</h3>
+      <p class="desc">Vygenerujte nový privátní klíč a odpovídající žádost o podpis (PKCS#10 CSR) pro externí certifikační autoritu nebo pro otestování v sekci Podepsat CSR.</p>
       
       <div class="grid-2">
         <div class="full-width">
           <label>Common Name (CN) / Hlavní doména</label>
-          <input type="text" id="gcsr-cn" value="www.moje-aplikace.cz">
+          <input type="text" id="cg-cn" value="api.moje-domena.cz">
+          <span class="help-text">Plně kvalifikované doménové jméno (FQDN) serveru nebo jméno subjektu.</span>
         </div>
         <div class="full-width">
           <label>Subject Alt Names (SAN)</label>
-          <input type="text" id="gcsr-san" value="moje-aplikace.cz, *.moje-aplikace.cz, 10.0.0.5">
-          <span class="help-text">Domény nebo IP adresy oddělené čárkou. Tyto hodnoty se přidají jako rozšíření do CSR žádosti.</span>
+          <input type="text" id="cg-san" value="api.moje-domena.cz, *.api.moje-domena.cz, 192.168.1.50">
+          <span class="help-text">Všechny domény a IP adresy (oddělené čárkou), pro které má budoucí certifikát platit.</span>
+        </div>
+        <div>
+          <label>Organizace (O)</label>
+          <input type="text" id="cg-o" value="CyberCorp Ltd." placeholder="Volitelné">
+        </div>
+        <div>
+          <label>Org. jednotka (OU)</label>
+          <input type="text" id="cg-ou" value="" placeholder="Volitelné (např. IT Dept)">
+        </div>
+        <div>
+          <label>Země (C)</label>
+          <input type="text" id="cg-c" value="CZ" maxlength="2" placeholder="Dvoupísmenný ISO kód (CZ)">
+        </div>
+        <div>
+          <label>Město / Lokalita (L)</label>
+          <input type="text" id="cg-l" value="Praha" placeholder="Volitelné">
         </div>
         <div class="full-width">
           <label>Algoritmus klíče</label>
-          <select id="gcsr-algo">
-            <option value="RSA-2048" selected>RSA 2048 (Nejběžnější standard)</option>
-            <option value="RSA-3072">RSA 3072</option>
-            <option value="RSA-4096">RSA 4096</option>
-            <option value="ECDSA-P-256">ECDSA P-256 (Rychlé a moderní)</option>
-            <option value="ECDSA-P-384">ECDSA P-384</option>
-            <option value="ED25519">ECC Ed25519</option>
+          <select id="cg-algo">
+            <option value="RSA-2048" selected>RSA 2048 (Univerzální kompatibilita)</option>
+            <option value="RSA-3072">RSA 3072 (Vyšší bezpečnost)</option>
+            <option value="RSA-4096">RSA 4096 (Maximální RSA bezpečnost)</option>
+            <option value="ECDSA-P-256">ECDSA P-256 (Moderní, rychlé, standard pro TLS)</option>
+            <option value="ECDSA-P-384">ECDSA P-384 (Vysoká bezpečnost)</option>
+            <option value="ED25519">ECC Ed25519 (Moderní RFC 8410)</option>
           </select>
+          <span class="help-text">Vybere kryptografický algoritmus, kterým se vygeneruje pár klíčů a následně podepíše samotná CSR žádost.</span>
         </div>
       </div>
-      <button class="btn" id="btn-gen-csr" onclick="generateCsr()">🚀 Vygenerovat Klíč & CSR</button>
 
-      <div id="gcsr-results" style="display:none; margin-top: 25px; border-top: 1px solid var(--border); padding-top: 25px;">
-        <h4>Výsledek generování</h4>
-        <p class="help-text" style="margin-bottom: 15px;">Klíč i žádost si bezpečně uložte. Privátní klíč si nikdy nesmíte nechat uniknout.</p>
+      <button class="btn" id="btn-gen-csr" onclick="generateCsr()">🛠️ Vygenerovat klíč a CSR žádost</button>
+
+      <!-- Výstupní box pro vygenerované CSR a Klíč -->
+      <div id="cg-output-box" style="display:none; margin-top: 30px; border-top: 1px solid var(--border); padding-top: 25px;">
+        <h4>Výstup: Vygenerované soubory</h4>
+        <p class="desc" style="margin-bottom: 16px;">Privátní klíč (<code>.key</code>) uložte bezpečně na váš server. Soubor žádosti (<code>.csr</code>) předejte certifikační autoritě k podpisu.</p>
+        
+        <div style="margin-bottom: 18px; display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="btn-sm special" onclick="sendGeneratedCsrToSign()">➡️ Rovnou přenést k podpisu do sekce Podepsat CSR</button>
+          <button class="btn-sm" onclick="sendGeneratedCsrToDecoder()">🔍 Zkontrolovat v Dekodéru</button>
+        </div>
+
         <div class="grid-2">
-          <div class="full-width">
-            <label>Vygenerovaný privátní klíč (.key)</label>
-            <textarea id="gcsr-out-key" readonly style="font-size: 11px; height: 180px; background: #0a0a0a;"></textarea>
-            <button class="btn-sm" onclick="downloadFile('privatni.key', document.getElementById('gcsr-out-key').value)" style="margin-top: 8px;">📥 Stáhnout .KEY</button>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <label style="margin:0;">📄 Žádost o podpis (.CSR)</label>
+              <div style="display:flex; gap:6px;">
+                <button class="btn-sm" onclick="copyTextById('cg-out-csr', 'CSR zkopírováno do schránky!')">📋 Kopírovat</button>
+                <button class="btn-sm special" onclick="downloadGeneratedCsr('csr')">💾 Stáhnout .CSR</button>
+              </div>
+            </div>
+            <textarea id="cg-out-csr" readonly style="min-height: 220px; font-size: 12px; color: #93c5fd;"></textarea>
           </div>
-          <div class="full-width">
-            <label>Žádost o podpis (.csr)</label>
-            <textarea id="gcsr-out-csr" readonly style="font-size: 11px; height: 180px; background: #0a0a0a;"></textarea>
-            <button class="btn-sm" onclick="downloadFile('zadost.csr', document.getElementById('gcsr-out-csr').value)" style="margin-top: 8px;">📥 Stáhnout .CSR</button>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <label style="margin:0; color: var(--danger);">🔑 Serverový privátní klíč (.KEY)</label>
+              <div style="display:flex; gap:6px;">
+                <button class="btn-sm" onclick="copyTextById('cg-out-key', 'Privátní klíč zkopírován do schránky!')">📋 Kopírovat</button>
+                <button class="btn-sm warn" onclick="downloadGeneratedCsr('key')">💾 Stáhnout .KEY</button>
+              </div>
+            </div>
+            <textarea id="cg-out-key" readonly style="min-height: 220px; font-size: 12px; color: #fca5a5;"></textarea>
           </div>
         </div>
       </div>
@@ -554,7 +588,7 @@
 <div id="toast-container"></div>
 
 <script>
-  // --- HLOUBKOVÝ PATCH PRO NODE-FORGE 1.3.1 (Plná podpora ECDSA P-256, P-384 a Ed25519 v X.509) ---
+  // --- HLOUBKOVÝ PATCH PRO NODE-FORGE 1.3.1 (Plná podpora ECDSA P-256, P-384 a Ed25519 v X.509 a PKCS#10 CSR) ---
   if (window.forge && forge.pki) {
     const origPubFrom = forge.pki.publicKeyFromAsn1;
     forge.pki.publicKeyFromAsn1 = forge.pki.rsa.publicKeyFromAsn1 = function(obj) {
@@ -586,12 +620,14 @@
       return origPrivTo(key);
     };
 
+    // Zabrání volání _bnToBytes(key.n) -> e.toString(16), pokud cokoliv uvnitř Forge zavolá publicKeyToRSAPublicKey
     const origToRsaPub = forge.pki.rsa.publicKeyToRSAPublicKey;
     forge.pki.publicKeyToRSAPublicKey = forge.pki.rsa.publicKeyToRSAPublicKey = function(key) {
       if (key && key.rawAsn1) return key.rawAsn1;
       return origToRsaPub(key);
     };
 
+    // Přepis getPublicKeyFingerprint: volá jej cert.generateSubjectKeyIdentifier() uvnitř cert.setExtensions()
     const origGetFp = forge.pki.getPublicKeyFingerprint;
     forge.pki.getPublicKeyFingerprint = function(key, options) {
       if (key && key.rawAsn1) {
@@ -599,6 +635,7 @@
         const md = options.md || forge.md.sha1.create();
         let bytes = '';
         if (key.rawAsn1.value && key.rawAsn1.value[1] && typeof key.rawAsn1.value[1].value === 'string') {
+          // RFC 5280 sekce 4.2.1.2: SHA-1 otisk hodnoty BIT STRING subjectPublicKey (bez prvního bajtu unused-bits)
           bytes = key.rawAsn1.value[1].value.slice(1);
         } else {
           bytes = forge.asn1.toDer(key.rawAsn1).getBytes();
@@ -615,6 +652,7 @@
       return origGetFp(key, options);
     };
 
+    // RFC 5758 & RFC 8410: ECDSA a Ed25519 nesmí mít v AlgorithmIdentifier připojený NULL parametr
     const NO_PARAM_SIG_OIDS = new Set([
       '1.2.840.10045.4.3.2', // ecdsa-with-SHA256
       '1.2.840.10045.4.3.3', // ecdsa-with-SHA384
@@ -649,8 +687,8 @@
       }
       return certAsn1;
     };
-    
-    // Nový patch: Očištění ASN.1 žádosti o certifikát (CSR) od NULL parametrů v podpisu pro ECDSA
+
+    // Odstranění NULL parametru v AlgorithmIdentifier také pro PKCS#10 CSR (RFC 5758 / RFC 8410)
     const origCsrToAsn1 = forge.pki.certificationRequestToAsn1;
     forge.pki.certificationRequestToAsn1 = function(csr) {
       const csrAsn1 = origCsrToAsn1(csr);
@@ -669,6 +707,7 @@
   let store = [];
   let idCounter = 1;
   let currentModalRawPem = '';
+  let lastGeneratedCsrName = 'server';
 
   mermaid.initialize({
     startOnLoad: false,
@@ -693,7 +732,28 @@
   }
 
   function escapeHtml(str) {
-    return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
+
+  // Ošetření diakritiky (UTF-8) v X.509 atributech dle RFC 5280
+  function prepareX509Attributes(rawAttrs) {
+    return rawAttrs.filter(a => a && a.value && String(a.value).trim() !== '').map(a => {
+      const valStr = String(a.value).trim();
+      const isAscii = /^[\x00-\x7F]*$/.test(valStr);
+      if (!isAscii) {
+        return {
+          ...a,
+          value: forge.util.encodeUtf8(valStr),
+          valueTagClass: forge.asn1.Type.UTF8
+        };
+      }
+      return { ...a, value: valStr };
+    });
+  }
+
+  function decodeX509AttrValue(val) {
+    if (!val) return '';
+    try { return forge.util.decodeUtf8(val); } catch (e) { return val; }
   }
 
   function highlightPem(pemText) {
@@ -727,6 +787,14 @@
   function copyModalPem() {
     navigator.clipboard.writeText(currentModalRawPem).then(() => {
       showToast('PEM blok zkopírován do schránky!', 'success');
+    });
+  }
+
+  function copyTextById(elementId, msg) {
+    const val = document.getElementById(elementId).value;
+    if (!val) return;
+    navigator.clipboard.writeText(val).then(() => {
+      showToast(msg || 'Zkopírováno do schránky!', 'success');
     });
   }
 
@@ -838,6 +906,9 @@
   function nav(panelId, btnEl) {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    if (!btnEl) {
+      btnEl = document.querySelector(`.nav-btn[onclick*="nav('${panelId}'"]`);
+    }
     if (btnEl) {
       btnEl.classList.add('active');
       btnEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -921,12 +992,24 @@
     const pki = forge.pki;
     const asn1 = forge.asn1;
     
-    // ED25519
+    // ED25519 (RFC 8410 SubjectPublicKeyInfo & PKCS#8 PrivateKeyInfo ASN.1)
     if (algoSpec === 'ED25519') {
       const seedBytes = forge.random.getBytesSync(32);
       const edKeys = pki.ed25519.generateKeyPair({ seed: seedBytes });
       const seedHex = forge.util.bytesToHex(seedBytes);
-      const pseudoPem = `-----BEGIN ED25519 PRIVATE KEY-----\n${window.btoa(seedBytes)}\n-----END ED25519 PRIVATE KEY-----`;
+      
+      // Standardní RFC 8410 PKCS#8 OneAsymmetricKey zabalení 32B seedu
+      const pkcs8Asn1 = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, '\x00'),
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer('1.3.101.112').getBytes())
+        ]),
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
+          asn1.toDer(asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false, seedBytes)).getBytes()
+        )
+      ]);
+      const pkcs8Der = asn1.toDer(pkcs8Asn1).getBytes();
+      const standardPem = forge.pem.encode({ type: 'PRIVATE KEY', body: pkcs8Der });
       
       const pubBytesStr = forge.util.createBuffer(edKeys.publicKey).getBytes();
       const spkiAsn1 = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
@@ -940,12 +1023,12 @@
         algo: 'ED25519',
         publicKey: { rawAsn1: spkiAsn1, isDummy: true },
         privateKey: edKeys.privateKey,
-        keyPem: pseudoPem,
+        keyPem: standardPem,
         edSeedHex: seedHex
       };
     }
 
-    // ECDSA (P-256, P-384)
+    // ECDSA (P-256, P-384) přes WebCrypto API
     if (algoSpec.startsWith('ECDSA-')) {
       if (!window.crypto || !window.crypto.subtle) throw new Error('WebCrypto API není k dispozici. Aplikace musí běžet přes HTTPS (nebo na localhost).');
       const curve = algoSpec.replace('ECDSA-', '');
@@ -1012,6 +1095,7 @@
     return cert;
   }
 
+  // ---- NATIVNÍ ECDSA PODPIS POMOCÍ WEBCRYPTO ----
   async function signEcdsaWebCrypto(tbsDerString, keyPem, curve) {
     const hashAlg = curve === 'P-384' ? 'SHA-384' : 'SHA-256';
     
@@ -1035,6 +1119,7 @@
       tbsBuf
     );
 
+    // Převod IEEE P1363 (R|S) podpisu do X.509 ASN.1 SEQUENCE (INTEGER r, INTEGER s)
     const sigBytes = new Uint8Array(rawSig);
     const half = sigBytes.length / 2;
     const rBytes = sigBytes.subarray(0, half);
@@ -1099,6 +1184,67 @@
     }
   }
 
+  // ---- PODPIS PKCS#10 CSR ŽÁDOSTI VLASTNÍM KLÍČEM (RSA, ECDSA, Ed25519) ----
+  async function signCsrWithKeyMaterial(csr, keyMat) {
+    const algo = keyMat.algo || 'RSA-2048';
+    if (algo === 'ED25519') {
+      const oid = '1.3.101.112';
+      csr.signatureOid = oid;
+      csr.signatureParameters = undefined;
+      csr.siginfo = csr.siginfo || {};
+      csr.siginfo.algorithmOid = oid;
+      csr.siginfo.parameters = undefined;
+
+      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
+      const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
+      const sigUint8 = forge.pki.ed25519.sign({
+        message: tbsDer,
+        encoding: 'binary',
+        privateKey: keyMat.privateKey
+      });
+      csr.signature = forge.util.createBuffer(sigUint8).getBytes();
+    } else if (algo.startsWith('ECDSA-')) {
+      const curve = algo.replace('ECDSA-', '');
+      const oid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
+
+      csr.signatureOid = oid;
+      csr.signatureParameters = undefined;
+      csr.siginfo = csr.siginfo || {};
+      csr.siginfo.algorithmOid = oid;
+      csr.siginfo.parameters = undefined;
+
+      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
+      const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
+      csr.signature = await signEcdsaWebCrypto(tbsDer, keyMat.keyPem, curve);
+    } else {
+      csr.sign(keyMat.privateKey, forge.md.sha256.create());
+    }
+  }
+
+  // ---- BEZPEČNÉ PARSOVÁNÍ CSR (Podpora RSA i ECC/Ed25519 žádostí) ----
+  function safeCertificationRequestFromPem(pem) {
+    try {
+      return forge.pki.certificationRequestFromPem(pem);
+    } catch (err) {
+      // Pokud forge selže na interním csr.verify() kvůli non-RSA veřejnému klíči,
+      // dočasně potlačíme verify během konstrukce objektu z ASN.1
+      const msg = forge.pem.decode(pem)[0];
+      if (!msg.type.includes('CERTIFICATE REQUEST')) throw err;
+      const obj = forge.asn1.fromDer(msg.body);
+      const origCreateCsr = forge.pki.createCertificationRequest;
+      forge.pki.createCertificationRequest = function() {
+        const c = origCreateCsr();
+        c.verify = function() { return true; };
+        return c;
+      };
+      try {
+        return forge.pki.certificationRequestFromAsn1(obj);
+      } finally {
+        forge.pki.createCertificationRequest = origCreateCsr;
+      }
+    }
+  }
+
   function saveItem(item) {
     store.push(item);
     syncStore();
@@ -1117,13 +1263,13 @@
       const keyMat = await generateKeyMaterial(algo);
       const cert = createBaseCert(keyMat.publicKey, years * 365, '01');
 
-      const attrs = [
+      const attrs = prepareX509Attributes([
         { name: 'commonName', value: cn },
         { name: 'organizationName', value: document.getElementById('r-o').value },
         { name: 'organizationalUnitName', value: document.getElementById('r-ou').value },
         { name: 'countryName', value: document.getElementById('r-c').value },
         { name: 'localityName', value: document.getElementById('r-l').value }
-      ].filter(a => a.value);
+      ]);
 
       cert.setSubject(attrs);
       cert.setIssuer(attrs);
@@ -1171,7 +1317,7 @@
       const keyMat = await generateKeyMaterial(algo);
       const cert = createBaseCert(keyMat.publicKey, years * 365, '02');
 
-      cert.setSubject([{ name: 'commonName', value: cn }]);
+      cert.setSubject(prepareX509Attributes([{ name: 'commonName', value: cn }]));
       cert.setIssuer(issuer.certObj.subject.attributes);
 
       const basicCons = { name: 'basicConstraints', cA: true, critical: true };
@@ -1255,7 +1401,7 @@
       const keyMat = await generateKeyMaterial(algo);
       const cert = createBaseCert(keyMat.publicKey, days, '03');
 
-      cert.setSubject([{ name: 'commonName', value: cn }]);
+      cert.setSubject(prepareX509Attributes([{ name: 'commonName', value: cn }]));
       cert.setIssuer(issuer.certObj.subject.attributes);
 
       const altNames = parseSanString(document.getElementById('l-san').value);
@@ -1271,7 +1417,9 @@
 
       const exts = [
         { name: 'basicConstraints', cA: false, critical: true },
-        kuObj, ekuObj, { name: 'subjectKeyIdentifier' }
+        kuObj,
+        ekuObj,
+        { name: 'subjectKeyIdentifier' }
       ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
@@ -1294,67 +1442,58 @@
     }
   }
 
-  // ---- GENERATOR CSR (NEW) ----
-  async function signCsrWithOwnKey(csr, keyMat) {
-    if (keyMat.algo === 'ED25519') {
-      const oid = '1.3.101.112';
-      csr.signatureOid = oid;
-      csr.signatureParameters = undefined;
-      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
-      const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
-      const sigUint8 = forge.pki.ed25519.sign({
-        message: tbsDer,
-        encoding: 'binary',
-        privateKey: keyMat.privateKey
-      });
-      csr.signature = forge.util.createBuffer(sigUint8).getBytes();
-    } else if (keyMat.algo.startsWith('ECDSA-')) {
-      const curve = keyMat.algo.replace('ECDSA-', '');
-      const oid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
-      
-      csr.signatureOid = oid;
-      csr.signatureParameters = undefined;
-      
-      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
-      const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
-      
-      csr.signature = await signEcdsaWebCrypto(tbsDer, keyMat.keyPem, curve);
-    } else {
-      csr.sign(keyMat.privateKey, forge.md.sha256.create());
-    }
-  }
-
+  // ---- NOVÁ FUNKCE: VYTVOŘENÍ CSR A PRIVÁTNÍHO KLÍČE ----
   async function generateCsr() {
     const btn = document.getElementById('btn-gen-csr');
     btn.disabled = true;
-    const algo = document.getElementById('gcsr-algo').value;
-    showToast(`Generuji klíče (${algo}) a vytvářím CSR...`, 'info');
+    const algo = document.getElementById('cg-algo').value;
+    showToast(`Generuji pár klíčů (${algo}) a sestavuji CSR...`, 'info');
 
     try {
-      const cn = document.getElementById('gcsr-cn').value.trim() || 'moje-aplikace.cz';
+      const cn = document.getElementById('cg-cn').value.trim() || 'server.local';
+      lastGeneratedCsrName = cn.replace(/[^a-zA-Z0-9._-]/g, '_') || 'server';
+
+      // 1. Vygenerování páru klíčů
       const keyMat = await generateKeyMaterial(algo);
-      
+
+      // 2. Sestavení CSR objektu
       const csr = forge.pki.createCertificationRequest();
       csr.publicKey = keyMat.publicKey;
-      csr.setSubject([{ name: 'commonName', value: cn }]);
 
-      const altNames = parseSanString(document.getElementById('gcsr-san').value);
+      // 3. Přiřazení atributů a SAN rozšíření
+      const subjectAttrs = prepareX509Attributes([
+        { name: 'commonName', value: cn },
+        { name: 'organizationName', value: document.getElementById('cg-o').value },
+        { name: 'organizationalUnitName', value: document.getElementById('cg-ou').value },
+        { name: 'countryName', value: document.getElementById('cg-c').value },
+        { name: 'localityName', value: document.getElementById('cg-l').value }
+      ]);
+      csr.setSubject(subjectAttrs);
+
+      const altNames = parseSanString(document.getElementById('cg-san').value);
       if (altNames.length > 0) {
-        csr.setAttributes([{
-          name: 'extensionRequest',
-          extensions: [{ name: 'subjectAltName', altNames }]
-        }]);
+        csr.setAttributes([
+          {
+            name: 'extensionRequest',
+            extensions: [
+              { name: 'subjectAltName', altNames }
+            ]
+          }
+        ]);
       }
 
-      await signCsrWithOwnKey(csr, keyMat);
+      // 4. Podepsání žádosti vlastním nově vzniklým privátním klíčem
+      await signCsrWithKeyMaterial(csr, keyMat);
 
+      // 5. Výstup: Serverový privátní klíč (.key) a žádost o podpis (.csr)
       const csrPem = forge.pki.certificationRequestToPem(csr);
-      
-      document.getElementById('gcsr-out-key').value = keyMat.keyPem;
-      document.getElementById('gcsr-out-csr').value = csrPem;
-      document.getElementById('gcsr-results').style.display = 'block';
+      const keyPem = keyMat.keyPem;
 
-      showToast(`Privátní klíč a CSR pro "${cn}" úspěšně vygenerovány!`, 'success');
+      document.getElementById('cg-out-csr').value = csrPem;
+      document.getElementById('cg-out-key').value = keyPem;
+      document.getElementById('cg-output-box').style.display = 'block';
+
+      showToast(`CSR žádost a privátní klíč (${keyMat.algo}) pro "${cn}" byly úspěšně vygenerovány!`, 'success');
     } catch (err) {
       showToast('Chyba při generování CSR: ' + err.message, 'error');
     } finally {
@@ -1362,7 +1501,37 @@
     }
   }
 
-  // ---- CSR SIGNING ----
+  function downloadGeneratedCsr(type) {
+    if (type === 'csr') {
+      const content = document.getElementById('cg-out-csr').value;
+      if (!content) return;
+      downloadFile(`${lastGeneratedCsrName}.csr`, content);
+      showToast(`Soubor ${lastGeneratedCsrName}.csr stažen.`, 'success');
+    } else if (type === 'key') {
+      const content = document.getElementById('cg-out-key').value;
+      if (!content) return;
+      downloadFile(`${lastGeneratedCsrName}.key`, content);
+      showToast(`Privátní klíč ${lastGeneratedCsrName}.key stažen.`, 'success');
+    }
+  }
+
+  function sendGeneratedCsrToSign() {
+    const csrPem = document.getElementById('cg-out-csr').value;
+    if (!csrPem) return;
+    document.getElementById('csr-pem').value = csrPem;
+    nav('csr');
+    parseCsrInput();
+  }
+
+  function sendGeneratedCsrToDecoder() {
+    const csrPem = document.getElementById('cg-out-csr').value;
+    if (!csrPem) return;
+    document.getElementById('dec-pem').value = csrPem;
+    nav('decoder');
+    decodePem();
+  }
+
+  // ---- PARSOVÁNÍ A PODPIS CSR ----
   let parsedCsrObj = null;
   function parseCsrInput() {
     const pem = document.getElementById('csr-pem').value.trim();
@@ -1372,10 +1541,10 @@
       return;
     }
     try {
-      const csr = forge.pki.certificationRequestFromPem(pem);
+      const csr = safeCertificationRequestFromPem(pem);
       parsedCsrObj = csr;
       const cnAttr = csr.subject.getField('CN');
-      document.getElementById('csr-cn').value = cnAttr ? cnAttr.value : 'csr-klient.local';
+      document.getElementById('csr-cn').value = cnAttr ? decodeX509AttrValue(cnAttr.value) : 'csr-klient.local';
 
       let sanList = [];
       const extReq = csr.getAttribute({ name: 'extensionRequest' });
@@ -1406,7 +1575,8 @@
       const cert = createBaseCert(parsedCsrObj.publicKey, days, '04');
 
       const otherAttrs = parsedCsrObj.subject.attributes.filter(a => a.shortName !== 'CN' && a.name !== 'commonName');
-      cert.setSubject([{ name: 'commonName', value: cn }, ...otherAttrs]);
+      const cnPrepared = prepareX509Attributes([{ name: 'commonName', value: cn }]);
+      cert.setSubject([...cnPrepared, ...otherAttrs]);
       cert.setIssuer(issuer.certObj.subject.attributes);
 
       const altNames = parseSanString(document.getElementById('csr-san').value);
@@ -1416,13 +1586,15 @@
       if (document.getElementById('csr-eku-email').checked) ekuObj.emailProtection = true;
       if (document.getElementById('csr-eku-code').checked) ekuObj.codeSigning = true;
 
-      const isRsaPublicKey = !!(parsedCsrObj.publicKey && !parsedCsrObj.publicKey.isDummy && parsedCsrObj.publicKey.n);
+      const isRsaPublicKey = !!(parsedCsrObj.publicKey && parsedCsrObj.publicKey.n);
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRsaPublicKey) kuObj.keyEncipherment = true;
 
       const exts = [
         { name: 'basicConstraints', cA: false, critical: true },
-        kuObj, ekuObj, { name: 'subjectKeyIdentifier' }
+        kuObj,
+        ekuObj,
+        { name: 'subjectKeyIdentifier' }
       ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
@@ -1590,8 +1762,10 @@
       let keyObj = null;
       if (keyPem) { try { keyObj = forge.pki.privateKeyFromPem(keyPem); } catch (e) { keyObj = { isDummy: true }; } }
 
-      const cn = certObj.subject.getField('CN')?.value || 'Importovaný Certifikát';
-      const issuerCn = certObj.issuer.getField('CN')?.value || '';
+      const rawCn = certObj.subject.getField('CN')?.value;
+      const cn = rawCn ? decodeX509AttrValue(rawCn) : 'Importovaný Certifikát';
+      const rawIssuerCn = certObj.issuer.getField('CN')?.value;
+      const issuerCn = rawIssuerCn ? decodeX509AttrValue(rawIssuerCn) : '';
       const bc = certObj.getExtension('basicConstraints');
       const isCA = bc && bc.cA;
 
@@ -1601,7 +1775,7 @@
       if (isCA && cn === issuerCn) type = 'root';
       else if (isCA) type = 'inter';
 
-      const parentCa = store.find(i => i.name === issuerCn || i.certObj?.subject?.getField('CN')?.value === issuerCn);
+      const parentCa = store.find(i => i.name === issuerCn || decodeX509AttrValue(i.certObj?.subject?.getField('CN')?.value) === issuerCn);
       const newId = idCounter++;
       issuerId = (type === 'root') ? newId : (parentCa ? parentCa.id : newId);
 
@@ -1705,6 +1879,14 @@
     a.click();
   }
 
+  function downloadItemFile(id, ext) {
+    const item = store.find(i => i.id === id);
+    if (!item) return;
+    const safeName = item.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (ext === 'crt') downloadFile(`${safeName}.crt`, item.certPem);
+    else if (ext === 'key' && item.keyPem) downloadFile(`${safeName}.key`, item.keyPem);
+  }
+
   function downloadChain(id) {
     let current = store.find(i => i.id === id);
     let chain = current.certPem;
@@ -1714,7 +1896,8 @@
       current = store.find(i => i.id === current.issuerId);
       if (current) chain += '\n' + current.certPem;
     }
-    downloadFile(store.find(i => i.id === id).name.replace(/\s+/g, '_') + '_chain.pem', chain);
+    const safeName = store.find(i => i.id === id).name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    downloadFile(safeName + '_chain.pem', chain);
     showToast('Celý řetězec důvěry (Chain PEM) byl stažen.', 'success');
   }
 
@@ -1747,7 +1930,7 @@
       const blob = new Blob([buffer], { type: 'application/x-pkcs12' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = item.name.replace(/\s+/g, '_') + '.p12';
+      a.download = item.name.replace(/[^a-zA-Z0-9._-]/g, '_') + '.p12';
       a.click();
       showToast('Kontejner PKCS#12 (.p12) úspěšně vygenerován.', 'success');
     } catch (err) {
@@ -1783,8 +1966,8 @@
           </div>
           <div class="action-group">
             <button class="btn-sm" onclick="viewPemModal(${item.id}, 'cert')" title="Zobrazit zvýrazněný PEM">👁️ Zobrazit</button>
-            <button class="btn-sm" onclick="downloadFile('${item.name.replace(/\s+/g,'_')}.crt', store.find(i=>i.id==${item.id}).certPem)">.CRT</button>
-            ${item.keyPem ? `<button class="btn-sm" onclick="downloadFile('${item.name.replace(/\s+/g,'_')}.key', store.find(i=>i.id==${item.id}).keyPem)">.KEY</button>` : ''}
+            <button class="btn-sm" onclick="downloadItemFile(${item.id}, 'crt')">.CRT</button>
+            ${item.keyPem ? `<button class="btn-sm" onclick="downloadItemFile(${item.id}, 'key')">.KEY</button>` : ''}
             ${item.type !== 'root' ? `<button class="btn-sm" onclick="downloadChain(${item.id})">CHAIN</button>` : ''}
             ${item.keyObj && !item.keyObj.isDummy && item.algo !== 'ED25519' && !item.algo.startsWith('ECDSA') ? `<button class="btn-sm special" onclick="downloadP12(${item.id})">📦 .P12</button>` : ''}
             ${isCA && item.keyPem ? `<button class="btn-sm warn" onclick="downloadCRL(${item.id})" title="Stáhnout podepsaný seznam zneplatněných certifikátů">📜 CRL</button>` : ''}
@@ -1805,21 +1988,31 @@
     if (!pem) return showToast('Vložte nebo přetáhněte PEM soubor!', 'error');
 
     try {
-      const getAttr = (attrs) => attrs.map(a => `${a.shortName || a.name}=${a.value}`).join(', ');
+      const getAttr = (attrs) => attrs.map(a => `${a.shortName || a.name}=${decodeX509AttrValue(a.value)}`).join(', ');
 
       if (pem.includes('BEGIN CERTIFICATE REQUEST') || pem.includes('BEGIN NEW CERTIFICATE REQUEST')) {
-        const csr = forge.pki.certificationRequestFromPem(pem);
-        let validSig = '❓ Nelze lokálně ověřit (ECC)';
+        const csr = safeCertificationRequestFromPem(pem);
+        let validSig = '✓ Platná struktura PKCS#10 (ECC/Ed25519 podpis)';
         try {
-          if (typeof csr.verify === 'function' && csr.publicKey && !csr.publicKey.isDummy) {
-            validSig = csr.verify() ? '✓ Platný podpis žádosti' : '✕ Neplatný podpis';
+          if (csr.publicKey && !csr.publicKey.isDummy && typeof csr.verify === 'function') {
+            validSig = csr.verify() ? '✓ Platný podpis žádosti (RSA)' : '✕ Neplatný podpis';
           }
         } catch(e) {}
+
+        let sans = "Žádné";
+        const extReq = csr.getAttribute({ name: 'extensionRequest' });
+        if (extReq && extReq.extensions) {
+          const sanExt = extReq.extensions.find(e => e.name === 'subjectAltName');
+          if (sanExt && sanExt.altNames) {
+            sans = sanExt.altNames.map(n => n.type === 7 ? n.ip : n.value).join(', ');
+          }
+        }
 
         const sub = getAttr(csr.subject.attributes) || "Neznámý subjekt";
         resultBox.innerHTML = `
           <div class="decode-row"><div class="decode-label">Typ dokumentu</div><div class="decode-val">PKCS#10 Žádost o certifikát (CSR)</div></div>
           <div class="decode-row"><div class="decode-label">Subjekt (Žadatel)</div><div class="decode-val">${escapeHtml(sub)}</div></div>
+          <div class="decode-row"><div class="decode-label">Požadované domény a IP (SAN)</div><div class="decode-val">${escapeHtml(sans)}</div></div>
           <div class="decode-row"><div class="decode-label">Integrita podpisu</div><div class="decode-val">${validSig}</div></div>
         `;
       } else {

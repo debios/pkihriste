@@ -1,15 +1,18 @@
-
 <!DOCTYPE html>
 <html lang="cs">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>PKI Mega-Toolbox 2.0 | Advanced X.509 Studio</title>
+  
+  <!-- Fonty (Montserrat) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  
   <style>
     :root {
       --bg: #050505; --surface: #121212; --surface2: #1e1e1e;
@@ -27,11 +30,11 @@
     
     /* Sidebar */
     .sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; position: sticky; top: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-    .sidebar h2 { font-size: 15px; margin-bottom: 20px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; }
+    .sidebar h2 { font-size: 15px; margin-bottom: 20px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; font-weight: 800; }
     .sidebar h2 span { font-size: 11px; background: #172554; color: #93c5fd; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
-    .nav-btn { display: block; width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); padding: 12px 14px; text-align: left; cursor: pointer; border-radius: 6px; font-family: var(--font); margin-bottom: 4px; transition: 0.2s; white-space: nowrap; font-size: 13.5px; }
+    .nav-btn { display: block; width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); padding: 12px 14px; text-align: left; cursor: pointer; border-radius: 6px; font-family: var(--font); margin-bottom: 4px; transition: 0.2s; white-space: nowrap; font-size: 13.5px; font-weight: 500; }
     .nav-btn:hover { background: var(--surface2); }
-    .nav-btn.active { background: #172554; border-color: var(--accent); color: #93c5fd; font-weight: bold; }
+    .nav-btn.active { background: #172554; border-color: var(--accent); color: #93c5fd; font-weight: 700; }
     .nav-divider { height: 1px; background: var(--border); margin: 15px 0; }
 
     /* Main Content */
@@ -40,28 +43,28 @@
     .panel.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     
-    h3 { font-size: 22px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; color: #fff; }
-    h4 { font-size: 16px; margin: 25px 0 12px 0; color: var(--accent); }
+    h3 { font-size: 22px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; color: #fff; font-weight: 700; }
+    h4 { font-size: 16px; margin: 25px 0 12px 0; color: var(--accent); font-weight: 600; }
     p.desc { color: var(--muted); margin-bottom: 25px; font-size: 14px; line-height: 1.6; }
     
     /* Forms */
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 20px; margin-bottom: 25px; }
     .full-width { grid-column: 1 / -1; }
     
-    label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
-    input, select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: 6px; font-family: var(--font); outline: none; font-size: 14px; transition: border-color 0.2s, box-shadow 0.2s; }
+    label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+    input, select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: 6px; font-family: var(--font); outline: none; font-size: 14px; transition: border-color 0.2s, box-shadow 0.2s; font-weight: 500; }
     input:focus, select:focus, textarea:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
-    textarea { resize: vertical; min-height: 140px; line-height: 1.5; }
+    textarea { resize: vertical; min-height: 140px; line-height: 1.5; font-family: ui-monospace, monospace; } /* Textareas si necháme v monospace kvůli PEM struktuře */
     
     /* Explanatory Texts */
-    .help-text { color: #6b7280; font-size: 12px; margin-top: 6px; display: block; line-height: 1.4; font-style: normal; }
+    .help-text { color: #6b7280; font-size: 12px; margin-top: 6px; display: block; line-height: 1.4; font-style: normal; font-weight: 400; }
     
     .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: var(--bg); padding: 16px; border: 1px solid var(--border); border-radius: 6px; }
-    .checkbox-label { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text); text-transform: none; cursor: pointer; margin-bottom: 0; font-weight: normal; letter-spacing: normal; }
+    .checkbox-label { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text); text-transform: none; cursor: pointer; margin-bottom: 0; font-weight: 500; letter-spacing: normal; }
     .checkbox-label input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
     
     /* Drag & Drop Zone */
-    .drop-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 25px; text-align: center; color: var(--muted); margin-bottom: 16px; cursor: pointer; transition: all 0.2s; background: rgba(255,255,255,0.015); font-size: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+    .drop-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 25px; text-align: center; color: var(--muted); margin-bottom: 16px; cursor: pointer; transition: all 0.2s; background: rgba(255,255,255,0.015); font-size: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; font-weight: 500;}
     .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); color: #93c5fd; background: rgba(59, 130, 246, 0.08); }
     .drop-zone input[type="file"] { display: none; }
 
@@ -70,7 +73,7 @@
     .alert-box span { font-size: 18px; }
     
     /* Buttons */
-    .btn { background: var(--accent); color: #fff; border: none; padding: 14px 24px; font-family: var(--font); font-weight: bold; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 100%; font-size: 15px; letter-spacing: 0.5px; }
+    .btn { background: var(--accent); color: #fff; border: none; padding: 14px 24px; font-family: var(--font); font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 100%; font-size: 15px; letter-spacing: 0.5px; }
     .btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
     .btn:active { transform: translateY(1px); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -80,7 +83,7 @@
     .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
     .btn-danger:hover { background: var(--danger); color: #fff; }
     
-    .btn-sm { padding: 8px 12px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 5px; font-family: var(--font); transition: 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+    .btn-sm { padding: 8px 12px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 5px; font-family: var(--font); font-weight: 600; transition: 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
     .btn-sm:hover { background: var(--border); }
     .btn-sm.special { border-color: #6366f1; color: #a5b4fc; background: rgba(49, 46, 129, 0.4); }
     .btn-sm.special:hover { background: rgba(49, 46, 129, 0.8); }
@@ -100,10 +103,10 @@
     .keyring-item.revoked { opacity: 0.65; border-left-color: #4b5563; background: #0a0505; }
     
     .keyring-info { flex: 1; min-width: 0; }
-    .keyring-info strong { font-size: 15px; display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; word-break: break-word; line-height: 1.3; }
-    .keyring-info span { font-size: 12.5px; color: var(--muted); display: block; line-height: 1.5; }
+    .keyring-info strong { font-size: 15px; font-weight: 700; display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; word-break: break-word; line-height: 1.3; }
+    .keyring-info span { font-size: 12.5px; font-weight: 500; color: var(--muted); display: block; line-height: 1.5; }
     
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-right: 8px; text-transform: uppercase; display: inline-block; vertical-align: middle; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 8px; text-transform: uppercase; display: inline-block; vertical-align: middle; }
     .badge.root { background: #7f1d1d; color: #fca5a5; }
     .badge.inter { background: #78350f; color: #fcd34d; }
     .badge.leaf { background: #14532d; color: #86efac; }
@@ -113,7 +116,7 @@
     .action-group { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
     /* Syntax Highlighted PEM Viewer */
-    .pem-viewer { background: #080808; border: 1px solid var(--border); border-radius: 8px; padding: 18px; font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin-top: 15px; position: relative; }
+    .pem-viewer { background: #080808; border: 1px solid var(--border); border-radius: 8px; padding: 18px; font-size: 12.5px; font-family: ui-monospace, monospace; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin-top: 15px; position: relative; }
     .pem-header { color: #38bdf8; font-weight: bold; }
     .pem-footer { color: #34d399; font-weight: bold; }
     .pem-body { color: #cbd5e1; }
@@ -123,24 +126,24 @@
     .modal-backdrop.open { display: flex; }
     .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 750px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px; }
-    .modal-header strong { font-size: 16px; color: #fff; }
+    .modal-header strong { font-size: 16px; color: #fff; font-weight: 700; }
     .modal-body { overflow-y: auto; flex: 1; padding-right: 5px; }
     .modal-body::-webkit-scrollbar { width: 8px; }
     .modal-body::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
 
     /* Graph Container */
-    .graph-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-height: 400px; display: flex; align-items: center; justify-content: center; overflow-x: auto; }
+    .graph-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-height: 400px; display: flex; align-items: center; justify-content: center; overflow-x: auto; font-family: ui-monospace, monospace; }
 
     /* Decoder Results */
     .decode-result { background: var(--surface2); border: 1px solid var(--border); padding: 20px; border-radius: 8px; margin-top: 20px; display: none; }
     .decode-row { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
     .decode-row:last-child { border: none; margin: 0; padding: 0; }
-    .decode-label { color: var(--accent); font-size: 11.5px; text-transform: uppercase; font-weight: bold; margin-bottom: 6px; letter-spacing: 0.5px; }
-    .decode-val { font-size: 14px; word-break: break-word; line-height: 1.5; color: #fff; }
+    .decode-label { color: var(--accent); font-size: 11.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; letter-spacing: 0.5px; }
+    .decode-val { font-size: 14px; word-break: break-word; line-height: 1.5; color: #fff; font-weight: 500; }
 
     /* Floating Toast Notifications */
     #toast-container { position: fixed; bottom: 25px; right: 25px; z-index: 1000; display: flex; flex-direction: column; gap: 12px; max-width: 400px; pointer-events: none; }
-    .toast { padding: 15px 20px; border-radius: 8px; font-size: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); pointer-events: auto; display: flex; align-items: center; gap: 12px; line-height: 1.5; border-left: 4px solid transparent; }
+    .toast { padding: 15px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; box-shadow: 0 10px 25px rgba(0,0,0,0.5); animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); pointer-events: auto; display: flex; align-items: center; gap: 12px; line-height: 1.5; border-left: 4px solid transparent; }
     .toast.info { background: #082f49; color: #e0f2fe; border-color: #0ea5e9; border-left-color: #38bdf8; }
     .toast.success { background: #064e3b; color: #d1fae5; border-color: #10b981; border-left-color: #34d399; }
     .toast.error { background: #450a0a; color: #fee2e2; border-color: #ef4444; border-left-color: #f87171; }
@@ -189,6 +192,7 @@
     <button class="nav-btn" onclick="nav('root', this)">👑 Root CA</button>
     <button class="nav-btn" onclick="nav('inter', this)">🔗 Intermediate CA</button>
     <button class="nav-btn" onclick="nav('leaf', this)">🍃 Koncový certifikát</button>
+    <button class="nav-btn" onclick="nav('gencsr', this)">✨ Vytvořit CSR</button>
     <button class="nav-btn" onclick="nav('csr', this)">📝 Podepsat CSR</button>
     <button class="nav-btn" onclick="nav('cross', this)">🔀 Cross-Signing</button>
     <div class="nav-divider"></div>
@@ -213,7 +217,7 @@
       </div>
 
       <div class="toolbar">
-        <label class="checkbox-label" style="font-weight: bold;">
+        <label class="checkbox-label">
           <input type="checkbox" id="toggle-ls" onchange="toggleStorage()"> 
           💾 Ukládat klíčenku trvale v prohlížeči (LocalStorage)
         </label>
@@ -370,6 +374,53 @@
         </div>
       </div>
       <button class="btn" id="btn-gen-leaf" onclick="generateLeaf()">Vystavit koncový certifikát</button>
+    </div>
+
+    <!-- PANEL: CREATE CSR (NEW) -->
+    <div id="panel-gencsr" class="panel">
+      <h3>Vytvořit žádost o certifikát (CSR)</h3>
+      <p class="desc">Vygenerujte si lokálně nový privátní klíč a k němu žádost (CSR), kterou následně můžete předat k podepsání jakékoliv certifikační autoritě (zde v aplikaci, nebo u veřejné CA jako Let's Encrypt či DigiCert).</p>
+      
+      <div class="grid-2">
+        <div class="full-width">
+          <label>Common Name (CN) / Hlavní doména</label>
+          <input type="text" id="gcsr-cn" value="www.moje-aplikace.cz">
+        </div>
+        <div class="full-width">
+          <label>Subject Alt Names (SAN)</label>
+          <input type="text" id="gcsr-san" value="moje-aplikace.cz, *.moje-aplikace.cz, 10.0.0.5">
+          <span class="help-text">Domény nebo IP adresy oddělené čárkou. Tyto hodnoty se přidají jako rozšíření do CSR žádosti.</span>
+        </div>
+        <div class="full-width">
+          <label>Algoritmus klíče</label>
+          <select id="gcsr-algo">
+            <option value="RSA-2048" selected>RSA 2048 (Nejběžnější standard)</option>
+            <option value="RSA-3072">RSA 3072</option>
+            <option value="RSA-4096">RSA 4096</option>
+            <option value="ECDSA-P-256">ECDSA P-256 (Rychlé a moderní)</option>
+            <option value="ECDSA-P-384">ECDSA P-384</option>
+            <option value="ED25519">ECC Ed25519</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn" id="btn-gen-csr" onclick="generateCsr()">🚀 Vygenerovat Klíč & CSR</button>
+
+      <div id="gcsr-results" style="display:none; margin-top: 25px; border-top: 1px solid var(--border); padding-top: 25px;">
+        <h4>Výsledek generování</h4>
+        <p class="help-text" style="margin-bottom: 15px;">Klíč i žádost si bezpečně uložte. Privátní klíč si nikdy nesmíte nechat uniknout.</p>
+        <div class="grid-2">
+          <div class="full-width">
+            <label>Vygenerovaný privátní klíč (.key)</label>
+            <textarea id="gcsr-out-key" readonly style="font-size: 11px; height: 180px; background: #0a0a0a;"></textarea>
+            <button class="btn-sm" onclick="downloadFile('privatni.key', document.getElementById('gcsr-out-key').value)" style="margin-top: 8px;">📥 Stáhnout .KEY</button>
+          </div>
+          <div class="full-width">
+            <label>Žádost o podpis (.csr)</label>
+            <textarea id="gcsr-out-csr" readonly style="font-size: 11px; height: 180px; background: #0a0a0a;"></textarea>
+            <button class="btn-sm" onclick="downloadFile('zadost.csr', document.getElementById('gcsr-out-csr').value)" style="margin-top: 8px;">📥 Stáhnout .CSR</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- PANEL: CSR SIGNING -->
@@ -535,14 +586,12 @@
       return origPrivTo(key);
     };
 
-    // Zabrání volání _bnToBytes(key.n) -> e.toString(16), pokud cokoliv uvnitř Forge zavolá publicKeyToRSAPublicKey
     const origToRsaPub = forge.pki.rsa.publicKeyToRSAPublicKey;
     forge.pki.publicKeyToRSAPublicKey = forge.pki.rsa.publicKeyToRSAPublicKey = function(key) {
       if (key && key.rawAsn1) return key.rawAsn1;
       return origToRsaPub(key);
     };
 
-    // Přepis getPublicKeyFingerprint: volá jej cert.generateSubjectKeyIdentifier() uvnitř cert.setExtensions()
     const origGetFp = forge.pki.getPublicKeyFingerprint;
     forge.pki.getPublicKeyFingerprint = function(key, options) {
       if (key && key.rawAsn1) {
@@ -550,7 +599,6 @@
         const md = options.md || forge.md.sha1.create();
         let bytes = '';
         if (key.rawAsn1.value && key.rawAsn1.value[1] && typeof key.rawAsn1.value[1].value === 'string') {
-          // RFC 5280 sekce 4.2.1.2: SHA-1 otisk hodnoty BIT STRING subjectPublicKey (bez prvního bajtu unused-bits)
           bytes = key.rawAsn1.value[1].value.slice(1);
         } else {
           bytes = forge.asn1.toDer(key.rawAsn1).getBytes();
@@ -567,7 +615,6 @@
       return origGetFp(key, options);
     };
 
-    // RFC 5758 & RFC 8410: ECDSA a Ed25519 nesmí mít v AlgorithmIdentifier připojený NULL parametr
     const NO_PARAM_SIG_OIDS = new Set([
       '1.2.840.10045.4.3.2', // ecdsa-with-SHA256
       '1.2.840.10045.4.3.3', // ecdsa-with-SHA384
@@ -601,6 +648,20 @@
         }
       }
       return certAsn1;
+    };
+    
+    // Nový patch: Očištění ASN.1 žádosti o certifikát (CSR) od NULL parametrů v podpisu pro ECDSA
+    const origCsrToAsn1 = forge.pki.certificationRequestToAsn1;
+    forge.pki.certificationRequestToAsn1 = function(csr) {
+      const csrAsn1 = origCsrToAsn1(csr);
+      if (csr && NO_PARAM_SIG_OIDS.has(csr.signatureOid)) {
+        const sigAlgNode = csrAsn1.value[1];
+        if (sigAlgNode && sigAlgNode.value && sigAlgNode.value.length === 2 &&
+            sigAlgNode.value[1].type === forge.asn1.Type.NULL) {
+          sigAlgNode.value.pop();
+        }
+      }
+      return csrAsn1;
     };
   }
 
@@ -860,7 +921,7 @@
     const pki = forge.pki;
     const asn1 = forge.asn1;
     
-    // ED25519 (RFC 8410 SubjectPublicKeyInfo ASN.1)
+    // ED25519
     if (algoSpec === 'ED25519') {
       const seedBytes = forge.random.getBytesSync(32);
       const edKeys = pki.ed25519.generateKeyPair({ seed: seedBytes });
@@ -884,7 +945,7 @@
       };
     }
 
-    // ECDSA (P-256, P-384) přes WebCrypto API
+    // ECDSA (P-256, P-384)
     if (algoSpec.startsWith('ECDSA-')) {
       if (!window.crypto || !window.crypto.subtle) throw new Error('WebCrypto API není k dispozici. Aplikace musí běžet přes HTTPS (nebo na localhost).');
       const curve = algoSpec.replace('ECDSA-', '');
@@ -951,7 +1012,6 @@
     return cert;
   }
 
-  // ---- NATIVNÍ ECDSA PODPIS POMOCÍ WEBCRYPTO ----
   async function signEcdsaWebCrypto(tbsDerString, keyPem, curve) {
     const hashAlg = curve === 'P-384' ? 'SHA-384' : 'SHA-256';
     
@@ -975,7 +1035,6 @@
       tbsBuf
     );
 
-    // Převod IEEE P1363 (R|S) podpisu do X.509 ASN.1 SEQUENCE (INTEGER r, INTEGER s)
     const sigBytes = new Uint8Array(rawSig);
     const half = sigBytes.length / 2;
     const rBytes = sigBytes.subarray(0, half);
@@ -1212,9 +1271,7 @@
 
       const exts = [
         { name: 'basicConstraints', cA: false, critical: true },
-        kuObj,
-        ekuObj,
-        { name: 'subjectKeyIdentifier' }
+        kuObj, ekuObj, { name: 'subjectKeyIdentifier' }
       ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
@@ -1237,6 +1294,75 @@
     }
   }
 
+  // ---- GENERATOR CSR (NEW) ----
+  async function signCsrWithOwnKey(csr, keyMat) {
+    if (keyMat.algo === 'ED25519') {
+      const oid = '1.3.101.112';
+      csr.signatureOid = oid;
+      csr.signatureParameters = undefined;
+      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
+      const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
+      const sigUint8 = forge.pki.ed25519.sign({
+        message: tbsDer,
+        encoding: 'binary',
+        privateKey: keyMat.privateKey
+      });
+      csr.signature = forge.util.createBuffer(sigUint8).getBytes();
+    } else if (keyMat.algo.startsWith('ECDSA-')) {
+      const curve = keyMat.algo.replace('ECDSA-', '');
+      const oid = curve === 'P-384' ? '1.2.840.10045.4.3.3' : '1.2.840.10045.4.3.2';
+      
+      csr.signatureOid = oid;
+      csr.signatureParameters = undefined;
+      
+      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
+      const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
+      
+      csr.signature = await signEcdsaWebCrypto(tbsDer, keyMat.keyPem, curve);
+    } else {
+      csr.sign(keyMat.privateKey, forge.md.sha256.create());
+    }
+  }
+
+  async function generateCsr() {
+    const btn = document.getElementById('btn-gen-csr');
+    btn.disabled = true;
+    const algo = document.getElementById('gcsr-algo').value;
+    showToast(`Generuji klíče (${algo}) a vytvářím CSR...`, 'info');
+
+    try {
+      const cn = document.getElementById('gcsr-cn').value.trim() || 'moje-aplikace.cz';
+      const keyMat = await generateKeyMaterial(algo);
+      
+      const csr = forge.pki.createCertificationRequest();
+      csr.publicKey = keyMat.publicKey;
+      csr.setSubject([{ name: 'commonName', value: cn }]);
+
+      const altNames = parseSanString(document.getElementById('gcsr-san').value);
+      if (altNames.length > 0) {
+        csr.setAttributes([{
+          name: 'extensionRequest',
+          extensions: [{ name: 'subjectAltName', altNames }]
+        }]);
+      }
+
+      await signCsrWithOwnKey(csr, keyMat);
+
+      const csrPem = forge.pki.certificationRequestToPem(csr);
+      
+      document.getElementById('gcsr-out-key').value = keyMat.keyPem;
+      document.getElementById('gcsr-out-csr').value = csrPem;
+      document.getElementById('gcsr-results').style.display = 'block';
+
+      showToast(`Privátní klíč a CSR pro "${cn}" úspěšně vygenerovány!`, 'success');
+    } catch (err) {
+      showToast('Chyba při generování CSR: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ---- CSR SIGNING ----
   let parsedCsrObj = null;
   function parseCsrInput() {
     const pem = document.getElementById('csr-pem').value.trim();
@@ -1290,15 +1416,13 @@
       if (document.getElementById('csr-eku-email').checked) ekuObj.emailProtection = true;
       if (document.getElementById('csr-eku-code').checked) ekuObj.codeSigning = true;
 
-      const isRsaPublicKey = !!(parsedCsrObj.publicKey && parsedCsrObj.publicKey.n);
+      const isRsaPublicKey = !!(parsedCsrObj.publicKey && !parsedCsrObj.publicKey.isDummy && parsedCsrObj.publicKey.n);
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRsaPublicKey) kuObj.keyEncipherment = true;
 
       const exts = [
         { name: 'basicConstraints', cA: false, critical: true },
-        kuObj,
-        ekuObj,
-        { name: 'subjectKeyIdentifier' }
+        kuObj, ekuObj, { name: 'subjectKeyIdentifier' }
       ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);

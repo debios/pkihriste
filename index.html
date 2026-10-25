@@ -183,7 +183,7 @@
 <div class="container">
   <!-- SIDEBAR NAVIGATION -->
   <div class="sidebar">
-    <h2>PKI Studio <span>v2.0</span></h2>
+    <h2>PKI Studio <span>v2.1</span></h2>
     <button class="nav-btn active" onclick="nav('keyring', this)">🗄️ Správce klíčů</button>
     <button class="nav-btn" onclick="nav('graph', this)">🕸️ Graf důvěry</button>
     <div class="nav-divider"></div>
@@ -588,27 +588,35 @@
 <div id="toast-container"></div>
 
 <script>
-// --- HLOUBKOVÝ OPRAVENÝ PATCH PRO NODE-FORGE 1.3.1 (Bezpečný mód) ---
+  // --- HLOUBKOVÝ PATCH PRO NODE-FORGE 1.3.1 (Plná podpora RSA, ECDSA P-256/P-384 a Ed25519 v X.509 a PKCS#10 CSR) ---
   if (window.forge && forge.pki) {
-    // 1. Ochrana pro publicKeyFromAsn1
+    // 1. Parsování SubjectPublicKeyInfo (RSA + fallback pro ECDSA/Ed25519)
     const origPubFrom = forge.pki.publicKeyFromAsn1;
     if (origPubFrom) {
       forge.pki.publicKeyFromAsn1 = function(obj) {
-        try { return origPubFrom(obj); } catch (e) { return { rawAsn1: obj, isDummy: true }; }
+        try {
+          return origPubFrom(obj);
+        } catch (e) {
+          return { rawAsn1: obj, isDummy: true };
+        }
       };
       if (forge.pki.rsa) forge.pki.rsa.publicKeyFromAsn1 = forge.pki.publicKeyFromAsn1;
     }
 
-    // 2. Ochrana pro privateKeyFromAsn1
+    // 2. Parsování PrivateKeyInfo (RSA + fallback pro ECDSA/Ed25519)
     const origPrivFrom = forge.pki.privateKeyFromAsn1;
     if (origPrivFrom) {
       forge.pki.privateKeyFromAsn1 = function(obj) {
-        try { return origPrivFrom(obj); } catch (e) { return { rawAsn1: obj, isDummy: true }; }
+        try {
+          return origPrivFrom(obj);
+        } catch (e) {
+          return { rawAsn1: obj, isDummy: true };
+        }
       };
       if (forge.pki.rsa) forge.pki.rsa.privateKeyFromAsn1 = forge.pki.privateKeyFromAsn1;
     }
 
-    // 3. Ochrana pro ToAsn1
+    // 3. Serializace veřejného a privátního klíče do ASN.1
     const origPubTo = forge.pki.publicKeyToAsn1;
     if (origPubTo) {
       forge.pki.publicKeyToAsn1 = function(key) {
@@ -627,16 +635,17 @@
       if (forge.pki.rsa) forge.pki.rsa.privateKeyToAsn1 = forge.pki.privateKeyToAsn1;
     }
 
-    // 4. OPRAVENO: Správná cesta pro RSAPublicKey fallback (už nehodí undefined!)
-    const origToRsaPub = forge.pki.publicKeyToRSAPublicKey;
+    // 4. Ochrana pro publicKeyToRSAPublicKey (v node-forge je na forge.pki.publicKeyToRSAPublicKey)
+    const origToRsaPub = forge.pki.publicKeyToRSAPublicKey || (forge.pki.rsa && forge.pki.rsa.publicKeyToRSAPublicKey);
     if (origToRsaPub) {
       forge.pki.publicKeyToRSAPublicKey = function(key) {
         if (key && key.rawAsn1) return key.rawAsn1;
         return origToRsaPub(key);
       };
+      if (forge.pki.rsa) forge.pki.rsa.publicKeyToRSAPublicKey = forge.pki.publicKeyToRSAPublicKey;
     }
 
-    // 5. Ochrana pro getPublicKeyFingerprint
+    // 5. Výpočet SHA-1 SubjectKeyIdentifier (RFC 5280 sekce 4.2.1.2) pro RSA i ECC/Ed25519
     const origGetFp = forge.pki.getPublicKeyFingerprint;
     if (origGetFp) {
       forge.pki.getPublicKeyFingerprint = function(key, options) {
@@ -662,10 +671,31 @@
       };
     }
 
-    // 6. RFC 5758 & RFC 8410: Odstranění NULL parametru při exportu
+    // 6. RFC 5758 & RFC 8410: ECDSA a Ed25519 nesmí mít v AlgorithmIdentifier připojený NULL parametr
     const NO_PARAM_SIG_OIDS = new Set([
-      '1.2.840.10045.4.3.2', '1.2.840.10045.4.3.3', '1.3.101.112'
+      '1.2.840.10045.4.3.2', // ecdsa-with-SHA256
+      '1.2.840.10045.4.3.3', // ecdsa-with-SHA384
+      '1.3.101.112'          // Ed25519
     ]);
+
+    // V node-forge 1.3.1 se metoda jmenuje getTBSCertificate (s velkým TBS!)
+    const origGetTBS = forge.pki.getTBSCertificate;
+    if (origGetTBS) {
+      forge.pki.getTBSCertificate = forge.pki.getTbsCertificate = function(cert) {
+        const tbs = origGetTBS(cert);
+        if (cert && cert.siginfo && NO_PARAM_SIG_OIDS.has(cert.siginfo.algorithmOid)) {
+          for (let i = 0; i < tbs.value.length; i++) {
+            const node = tbs.value[i];
+            if (node && node.type === forge.asn1.Type.SEQUENCE && node.value && node.value.length === 2 &&
+                node.value[0].type === forge.asn1.Type.OID && node.value[1].type === forge.asn1.Type.NULL) {
+              node.value.pop();
+              break;
+            }
+          }
+        }
+        return tbs;
+      };
+    }
 
     const origCertToAsn1 = forge.pki.certificateToAsn1;
     if (origCertToAsn1) {
@@ -749,6 +779,27 @@
   function decodeX509AttrValue(val) {
     if (!val) return '';
     try { return forge.util.decodeUtf8(val); } catch (e) { return val; }
+  }
+
+  // Detekce algoritmu z veřejného klíče (pro CSR a Import)
+  function detectPublicKeyAlgo(pubKey, suffix = '') {
+    if (!pubKey) return 'UNKNOWN' + suffix;
+    if (pubKey.n && typeof pubKey.n.bitLength === 'function') {
+      return `RSA-${pubKey.n.bitLength()}${suffix}`;
+    }
+    if (pubKey.rawAsn1) {
+      try {
+        const derHex = forge.asn1.toDer(pubKey.rawAsn1).toHex();
+        // OID 1.3.101.112 (Ed25519) = 06 03 2b 65 70
+        if (derHex.includes('06032b6570')) return 'ED25519' + suffix;
+        // OID 1.3.132.0.34 (secp384r1 / P-384) = 06 05 2b 81 04 00 22
+        if (derHex.includes('06052b81040022')) return 'ECDSA-P-384' + suffix;
+        // OID 1.2.840.10045.3.1.7 (prime256v1 / P-256) = 06 08 2a 86 48 ce 3d 03 01 07
+        if (derHex.includes('06082a8648ce3d030107')) return 'ECDSA-P-256' + suffix;
+      } catch (e) {}
+      return 'ECC' + suffix;
+    }
+    return 'RSA' + suffix;
   }
 
   function highlightPem(pemText) {
@@ -1139,6 +1190,7 @@
     return forge.asn1.toDer(sigAsn1).getBytes();
   }
 
+  // ---- PODPIS X.509 CERTIFIKÁTU (RSA, ECDSA, Ed25519) ----
   async function signCertificateWithIssuer(cert, issuerItem, isSelfSigned = false) {
     const issuerAlgo = issuerItem.algo || 'RSA-2048';
     const issuerKeyObj = isSelfSigned ? issuerItem.privateKey : issuerItem.keyObj;
@@ -1152,8 +1204,7 @@
       cert.siginfo.algorithmOid = oid;
       cert.siginfo.parameters = undefined;
 
-      cert.generateTbsCertificate(); // Správné nativní volání
-      
+      cert.tbsCertificate = forge.pki.getTBSCertificate(cert);
       const tbsDer = forge.asn1.toDer(cert.tbsCertificate).getBytes();
       const sigUint8 = forge.pki.ed25519.sign({
         message: tbsDer,
@@ -1171,21 +1222,9 @@
       cert.siginfo.algorithmOid = oid;
       cert.siginfo.parameters = undefined;
       
-      cert.generateTbsCertificate(); // Správné nativní volání
-
-      // Nutné pro validitu ECC (odstraní prázdný NULL parametr z algoritmu)
-      if (cert.tbsCertificate) {
-        for (let i = 0; i < cert.tbsCertificate.value.length; i++) {
-          const node = cert.tbsCertificate.value[i];
-          if (node && node.type === forge.asn1.Type.SEQUENCE && node.value && node.value.length === 2 &&
-              node.value[0].type === forge.asn1.Type.OID && node.value[1].type === forge.asn1.Type.NULL) {
-            node.value.pop();
-            break;
-          }
-        }
-      }
-      
+      cert.tbsCertificate = forge.pki.getTBSCertificate(cert);
       const tbsDer = forge.asn1.toDer(cert.tbsCertificate).getBytes();
+      
       cert.signature = await signEcdsaWebCrypto(tbsDer, issuerKeyPem, curve);
     } else {
       cert.sign(issuerKeyObj, forge.md.sha256.create());
@@ -1203,7 +1242,7 @@
       csr.siginfo.algorithmOid = oid;
       csr.siginfo.parameters = undefined;
 
-      csr.generateCertificationRequestInfo();
+      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
       const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
       const sigUint8 = forge.pki.ed25519.sign({
         message: tbsDer,
@@ -1221,7 +1260,7 @@
       csr.siginfo.algorithmOid = oid;
       csr.siginfo.parameters = undefined;
 
-      csr.generateCertificationRequestInfo();
+      csr.certificationRequestInfo = forge.pki.getCertificationRequestInfo(csr);
       const tbsDer = forge.asn1.toDer(csr.certificationRequestInfo).getBytes();
       csr.signature = await signEcdsaWebCrypto(tbsDer, keyMat.keyPem, curve);
     } else {
@@ -1234,8 +1273,6 @@
     try {
       return forge.pki.certificationRequestFromPem(pem);
     } catch (err) {
-      // Pokud forge selže na interním csr.verify() kvůli non-RSA veřejnému klíči,
-      // dočasně potlačíme verify během konstrukce objektu z ASN.1
       const msg = forge.pem.decode(pem)[0];
       if (!msg.type.includes('CERTIFICATE REQUEST')) throw err;
       const obj = forge.asn1.fromDer(msg.body);
@@ -1450,7 +1487,7 @@
     }
   }
 
-  // ---- NOVÁ FUNKCE: VYTVOŘENÍ CSR A PRIVÁTNÍHO KLÍČE ----
+  // ---- VYTVOŘENÍ CSR A PRIVÁTNÍHO KLÍČE ----
   async function generateCsr() {
     const btn = document.getElementById('btn-gen-csr');
     btn.disabled = true;
@@ -1609,9 +1646,11 @@
 
       await signCertificateWithIssuer(cert, issuer);
 
+      const detectedAlgo = detectPublicKeyAlgo(parsedCsrObj.publicKey, '-CSR');
+
       saveItem({
         id: idCounter++, type: 'leaf', name: `[CSR] ${cn}`, issuerId: issuer.id,
-        algo: isRsaPublicKey ? 'RSA-CSR' : 'ECC-CSR', edSeedHex: null,
+        algo: detectedAlgo, edSeedHex: null,
         revoked: false, revocationDate: null,
         certObj: cert, keyObj: null,
         certPem: forge.pki.certificateToPem(cert), keyPem: null
@@ -1767,8 +1806,20 @@
       const certPem = certMatch[0];
       const keyPem = keyMatch ? keyMatch[0] : null;
       const certObj = forge.pki.certificateFromPem(certPem);
+      const detectedAlgo = detectPublicKeyAlgo(certObj.publicKey);
       let keyObj = null;
-      if (keyPem) { try { keyObj = forge.pki.privateKeyFromPem(keyPem); } catch (e) { keyObj = { isDummy: true }; } }
+      let edSeedHex = null;
+
+      if (keyPem) {
+        if (detectedAlgo === 'ED25519') {
+          const msg = forge.pem.decode(keyPem)[0];
+          const seedBytes = msg.body.length >= 32 ? msg.body.slice(msg.body.length - 32) : msg.body;
+          edSeedHex = forge.util.bytesToHex(seedBytes);
+          keyObj = forge.pki.ed25519.generateKeyPair({ seed: seedBytes }).privateKey;
+        } else {
+          try { keyObj = forge.pki.privateKeyFromPem(keyPem); } catch (e) { keyObj = { isDummy: true }; }
+        }
+      }
 
       const rawCn = certObj.subject.getField('CN')?.value;
       const cn = rawCn ? decodeX509AttrValue(rawCn) : 'Importovaný Certifikát';
@@ -1789,13 +1840,14 @@
 
       saveItem({
         id: newId, type, name: cn, issuerId,
-        algo: keyObj ? 'EXT-KEY' : 'EXT-PEM', edSeedHex: null,
+        algo: detectedAlgo || (keyObj ? 'EXT-KEY' : 'EXT-PEM'),
+        edSeedHex,
         revoked: false, revocationDate: null,
         certObj, keyObj, certPem, keyPem
       });
 
       document.getElementById('imp-pem').value = '';
-      showToast(`Certifikát "${cn}" úspěšně importován do klíčenky!`, 'success');
+      showToast(`Certifikát "${cn}" (${detectedAlgo}) úspěšně importován do klíčenky!`, 'success');
     } catch (err) {
       showToast('Chyba při importu PEM: ' + err.message, 'error');
     }
@@ -2000,10 +2052,11 @@
 
       if (pem.includes('BEGIN CERTIFICATE REQUEST') || pem.includes('BEGIN NEW CERTIFICATE REQUEST')) {
         const csr = safeCertificationRequestFromPem(pem);
-        let validSig = '✓ Platná struktura PKCS#10 (ECC/Ed25519 podpis)';
+        const algoName = detectPublicKeyAlgo(csr.publicKey);
+        let validSig = `✓ Platná struktura PKCS#10 (${algoName})`;
         try {
           if (csr.publicKey && !csr.publicKey.isDummy && typeof csr.verify === 'function') {
-            validSig = csr.verify() ? '✓ Platný podpis žádosti (RSA)' : '✕ Neplatný podpis';
+            validSig = csr.verify() ? `✓ Platný podpis žádosti (${algoName})` : '✕ Neplatný podpis';
           }
         } catch(e) {}
 
@@ -2018,13 +2071,14 @@
 
         const sub = getAttr(csr.subject.attributes) || "Neznámý subjekt";
         resultBox.innerHTML = `
-          <div class="decode-row"><div class="decode-label">Typ dokumentu</div><div class="decode-val">PKCS#10 Žádost o certifikát (CSR)</div></div>
+          <div class="decode-row"><div class="decode-label">Typ dokumentu</div><div class="decode-val">PKCS#10 Žádost o certifikát (CSR) — ${escapeHtml(algoName)}</div></div>
           <div class="decode-row"><div class="decode-label">Subjekt (Žadatel)</div><div class="decode-val">${escapeHtml(sub)}</div></div>
           <div class="decode-row"><div class="decode-label">Požadované domény a IP (SAN)</div><div class="decode-val">${escapeHtml(sans)}</div></div>
           <div class="decode-row"><div class="decode-label">Integrita podpisu</div><div class="decode-val">${validSig}</div></div>
         `;
       } else {
         const cert = forge.pki.certificateFromPem(pem);
+        const algoName = detectPublicKeyAlgo(cert.publicKey);
         const sub = getAttr(cert.subject.attributes) || "Neznámý subjekt";
         const iss = getAttr(cert.issuer.attributes) || "Neznámý vystavitel";
 
@@ -2041,6 +2095,7 @@
         resultBox.innerHTML = `
           <div class="decode-row"><div class="decode-label">Subjekt (Komu patří)</div><div class="decode-val">${escapeHtml(sub)}</div></div>
           <div class="decode-row"><div class="decode-label">Vystavitel (Kdo jej vydal)</div><div class="decode-val">${escapeHtml(iss)}</div></div>
+          <div class="decode-row"><div class="decode-label">Algoritmus veřejného klíče</div><div class="decode-val">${escapeHtml(algoName)}</div></div>
           <div class="decode-row"><div class="decode-label">Platnost Od — Do</div><div class="decode-val">${cert.validity.notBefore.toLocaleString()} — ${cert.validity.notAfter.toLocaleString()}</div></div>
           <div class="decode-row"><div class="decode-label">Domény a IP (SAN)</div><div class="decode-val">${escapeHtml(sans)}</div></div>
           <div class="decode-row"><div class="decode-label">Sériové číslo (HEX)</div><div class="decode-val">${cert.serialNumber}</div></div>

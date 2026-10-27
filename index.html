@@ -183,7 +183,7 @@
 <div class="container">
   <!-- SIDEBAR NAVIGATION -->
   <div class="sidebar">
-    <h2>PKI Studio <span>v2.1</span></h2>
+    <h2>PKI Studio <span>v2.2</span></h2>
     <button class="nav-btn active" onclick="nav('keyring', this)">🗄️ Správce klíčů</button>
     <button class="nav-btn" onclick="nav('graph', this)">🕸️ Graf důvěry</button>
     <div class="nav-divider"></div>
@@ -881,11 +881,37 @@
           keyObj = forge.pki.privateKeyFromPem(item.keyPem);
         }
       } catch (e) {
-        keyObj = { isDummy: true }; 
+        keyObj = { isDummy: true };
       }
+    }
+    // Záchrana serialHex pro ECC certifikáty: forge může vracet certObj.serialNumber
+    // jako prázdný řetězec nebo undefined kvůli odlišnému SPKI parsování
+    let serialHex = item.serialHex || null;
+    if (!serialHex && item.certPem) {
+      // Pokud nemáme serialHex z metadat, extrahujeme přímo z DER
+      // (funkce extractSerialFromPem je definována níže v kódu)
+      // Toto se zavolá v inicializaci po načtení ze store; funkce je dostupná
+      try {
+        const msg = forge.pem.decode(item.certPem)[0];
+        const asn = forge.asn1.fromDer(msg.body);
+        const tbs = asn.value[0];
+        if (tbs && tbs.value) {
+          let snIdx = 0;
+          if (tbs.value[0] && tbs.value[0].tagClass === forge.asn1.Class.CONTEXT_SPECIFIC) snIdx = 1;
+          const snAsn = tbs.value[snIdx];
+          if (snAsn && snAsn.type === forge.asn1.Type.INTEGER) {
+            let hex = '';
+            for (let i = 0; i < snAsn.value.length; i++) {
+              hex += snAsn.value.charCodeAt(i).toString(16).padStart(2, '0');
+            }
+            if (hex) serialHex = hex;
+          }
+        }
+      } catch (e) { /* ignorujeme chyby parsování */ }
     }
     return {
       ...item,
+      serialHex: serialHex || item.serialHex || null,
       revoked: !!item.revoked,
       revocationDate: item.revocationDate || null,
       certObj,
@@ -897,7 +923,8 @@
     return store.map(item => ({
       id: item.id, type: item.type, name: item.name, issuerId: item.issuerId,
       crossTargetId: item.crossTargetId || null, algo: item.algo || 'RSA',
-      edSeedHex: item.edSeedHex || null, revoked: !!item.revoked,
+      edSeedHex: item.edSeedHex || null, serialHex: item.serialHex || null,
+      revoked: !!item.revoked,
       revocationDate: item.revocationDate || null, certPem: item.certPem,
       keyPem: item.keyPem || null
     }));
@@ -1131,13 +1158,81 @@
     });
   }
 
-  function createBaseCert(publicKey, validityDays, serialPrefix) {
+  // RFC 5280 §4.1.2.2: Serial number — 20 oktetů (160 bitů) kryptografické náhody
+  // MSB musí být 0 (kladné INTEGER bez DER sign-extension bajtu)
+  function generateSerialNumber() {
+    const bytes = new Uint8Array(20);
+    window.crypto.getRandomValues(bytes);
+    // Zajistíme kladné číslo: vynulujeme nejvyšší bit (0x80), nastavíme bit 0x40
+    bytes[0] = (bytes[0] & 0x7f) | 0x40;
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Formátuje hex sériové číslo pro zobrazení (XX:XX:XX:...)
+  function formatSerialHex(hexStr) {
+    if (!hexStr) return 'N/A';
+    const clean = hexStr.replace(/[^0-9a-fA-F]/g, '');
+    if (!clean) return 'N/A';
+    // Skupiny po 2 znacích oddělené dvojtečkou
+    return clean.match(/.{1,2}/g).join(':').toUpperCase();
+  }
+
+  // Záchranné přečtení sériového čísla přímo z DER/ASN.1 (pro ECC certifikáty
+  // kde forge.pki.certificateFromPem může vracet certObj.serialNumber jako prázdný
+  // řetězec nebo undefined kvůli odlišnému SPKI parsování)
+  function extractSerialFromPem(certPem) {
+    try {
+      const msg = forge.pem.decode(certPem)[0];
+      const asn1 = forge.asn1.fromDer(msg.body);
+      // Certificate ::= SEQUENCE { tbsCertificate SEQUENCE { ... } }
+      // TBSCertificate ::= SEQUENCE { version [0], serialNumber INTEGER, ... }
+      const tbs = asn1.value[0]; // TBSCertificate
+      if (!tbs || !tbs.value) return null;
+      let snIdx = 0;
+      // Přeskočíme volitelné [0] EXPLICIT version (tag 0xa0)
+      if (tbs.value[0] && tbs.value[0].tagClass === forge.asn1.Class.CONTEXT_SPECIFIC) {
+        snIdx = 1;
+      }
+      const snAsn1 = tbs.value[snIdx];
+      if (!snAsn1 || snAsn1.type !== forge.asn1.Type.INTEGER) return null;
+      // Převod binárního obsahu INTEGER na hex
+      let hex = '';
+      for (let i = 0; i < snAsn1.value.length; i++) {
+        hex += snAsn1.value.charCodeAt(i).toString(16).padStart(2, '0');
+      }
+      return hex || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Vrátí zobrazitelné sériové číslo pro položku klíčenky
+  function getItemSerialDisplay(item) {
+    // Priorita 1: uložená metadata serialHex (přesná hodnota z generování)
+    if (item.serialHex) return formatSerialHex(item.serialHex);
+    // Priorita 2: certObj.serialNumber naplněno forge parserem
+    const sn = item.certObj && item.certObj.serialNumber;
+    if (sn && typeof sn === 'string' && sn.replace(/[^0-9a-fA-F]/g,'').length > 0) {
+      return formatSerialHex(sn);
+    }
+    // Priorita 3: záchranné parsování z PEM (kritické pro ECC certifikáty)
+    if (item.certPem) {
+      const extracted = extractSerialFromPem(item.certPem);
+      if (extracted) return formatSerialHex(extracted);
+    }
+    return 'N/A';
+  }
+
+  function createBaseCert(publicKey, validityDays) {
     const cert = forge.pki.createCertificate();
     cert.publicKey = publicKey;
-    cert.serialNumber = serialPrefix + Math.floor(10000000 + Math.random() * 90000000).toString(16);
+    const sn = generateSerialNumber();
+    cert.serialNumber = sn;
     cert.validity.notBefore = new Date();
     cert.validity.notAfter = new Date();
     cert.validity.notAfter.setDate(cert.validity.notBefore.getDate() + validityDays);
+    // Vrátíme i serialHex pro uložení do store
+    cert._serialHex = sn;
     return cert;
   }
 
@@ -1306,7 +1401,7 @@
       const cn = document.getElementById('r-cn').value.trim() || 'Root CA';
       const years = parseInt(document.getElementById('r-years').value) || 10;
       const keyMat = await generateKeyMaterial(algo);
-      const cert = createBaseCert(keyMat.publicKey, years * 365, '01');
+      const cert = createBaseCert(keyMat.publicKey, years * 365);
 
       const attrs = prepareX509Attributes([
         { name: 'commonName', value: cn },
@@ -1318,7 +1413,11 @@
 
       cert.setSubject(attrs);
       cert.setIssuer(attrs);
-      
+
+      // RFC 5280 §4.2.1.9: basicConstraints critical=TRUE, cA=TRUE pro Root CA
+      // RFC 5280 §4.2.1.3: keyUsage critical=TRUE s keyCertSign a cRLSign
+      // RFC 5280 §4.2.1.2: subjectKeyIdentifier (metoda 1: SHA-1 hash SPKI bit-string)
+      // Pro self-signed Root CA se authorityKeyIdentifier rovná SKI (volitelné, ale doporučené)
       cert.setExtensions([
         { name: 'basicConstraints', cA: true, critical: true },
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
@@ -1331,6 +1430,7 @@
       saveItem({
         id, type: 'root', name: cn, issuerId: id,
         algo: keyMat.algo, edSeedHex: keyMat.edSeedHex || null,
+        serialHex: cert._serialHex,
         revoked: false, revocationDate: null,
         certObj: cert, keyObj: keyMat.privateKey,
         certPem: forge.pki.certificateToPem(cert), keyPem: keyMat.keyPem
@@ -1360,7 +1460,7 @@
       const years = parseInt(document.getElementById('i-years').value) || 5;
 
       const keyMat = await generateKeyMaterial(algo);
-      const cert = createBaseCert(keyMat.publicKey, years * 365, '02');
+      const cert = createBaseCert(keyMat.publicKey, years * 365);
 
       cert.setSubject(prepareX509Attributes([{ name: 'commonName', value: cn }]));
       cert.setIssuer(issuer.certObj.subject.attributes);
@@ -1368,10 +1468,18 @@
       const basicCons = { name: 'basicConstraints', cA: true, critical: true };
       if (!isNaN(pathLen) && pathLen >= 0) basicCons.pathLenConstraint = pathLen;
 
+      // RFC 5280 §4.2.1.1: authorityKeyIdentifier = SKI vystavující CA
+      // RFC 5280 §4.2.1.2: subjectKeyIdentifier pro tuto Intermediate CA
+      const skiExt = issuer.certObj.getExtension('subjectKeyIdentifier');
+      const akiExt = skiExt
+        ? { name: 'authorityKeyIdentifier', keyIdentifier: skiExt.subjectKeyIdentifier }
+        : { name: 'authorityKeyIdentifier' };
+
       cert.setExtensions([
         basicCons,
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
-        { name: 'subjectKeyIdentifier' }
+        { name: 'subjectKeyIdentifier' },
+        akiExt
       ]);
 
       await signCertificateWithIssuer(cert, issuer);
@@ -1379,6 +1487,7 @@
       saveItem({
         id: idCounter++, type: 'inter', name: cn, issuerId: issuer.id,
         algo: keyMat.algo, edSeedHex: keyMat.edSeedHex || null,
+        serialHex: cert._serialHex,
         revoked: false, revocationDate: null,
         certObj: cert, keyObj: keyMat.privateKey,
         certPem: forge.pki.certificateToPem(cert), keyPem: keyMat.keyPem
@@ -1444,27 +1553,38 @@
       const cn = document.getElementById('l-cn').value.trim() || 'leaf.local';
       const days = parseInt(document.getElementById('l-days').value) || 398;
       const keyMat = await generateKeyMaterial(algo);
-      const cert = createBaseCert(keyMat.publicKey, days, '03');
+      const cert = createBaseCert(keyMat.publicKey, days);
 
       cert.setSubject(prepareX509Attributes([{ name: 'commonName', value: cn }]));
       cert.setIssuer(issuer.certObj.subject.attributes);
 
       const altNames = parseSanString(document.getElementById('l-san').value);
-      const ekuObj = { name: 'extKeyUsage' };
+      const ekuObj = { name: 'extKeyUsage', critical: false };
       if (document.getElementById('eku-server').checked) ekuObj.serverAuth = true;
       if (document.getElementById('eku-client').checked) ekuObj.clientAuth = true;
       if (document.getElementById('eku-email').checked) ekuObj.emailProtection = true;
       if (document.getElementById('eku-code').checked) ekuObj.codeSigning = true;
 
       const isRSA = keyMat.algo.startsWith('RSA');
+      const isCodeSign = document.getElementById('eku-code').checked;
+      // RFC 5280 + CA/Browser Forum: keyUsage critical=TRUE
+      // Code Signing vyžaduje digitalSignature + nonRepudiation (CA/BF CS BRs)
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRSA) kuObj.keyEncipherment = true;
+      if (isCodeSign) kuObj.nonRepudiation = true;
+
+      // RFC 5280 §4.2.1.1: authorityKeyIdentifier = SKI vystavující CA
+      const skiExt = issuer.certObj.getExtension('subjectKeyIdentifier');
+      const akiExt = skiExt
+        ? { name: 'authorityKeyIdentifier', keyIdentifier: skiExt.subjectKeyIdentifier }
+        : { name: 'authorityKeyIdentifier' };
 
       const exts = [
         { name: 'basicConstraints', cA: false, critical: true },
         kuObj,
         ekuObj,
-        { name: 'subjectKeyIdentifier' }
+        { name: 'subjectKeyIdentifier' },
+        akiExt
       ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
@@ -1474,6 +1594,7 @@
       saveItem({
         id: idCounter++, type: 'leaf', name: cn, issuerId: issuer.id,
         algo: keyMat.algo, edSeedHex: keyMat.edSeedHex || null,
+        serialHex: cert._serialHex,
         revoked: false, revocationDate: null,
         certObj: cert, keyObj: keyMat.privateKey,
         certPem: forge.pki.certificateToPem(cert), keyPem: keyMat.keyPem
@@ -1615,9 +1736,23 @@
     const issuer = store.find(i => i.id === issuerId);
 
     try {
+      // Ověření podpisu CSR žádosti před vydáním certifikátu (Proof of Possession)
+      // Pro RSA klíče: plné kryptografické ověření; pro ECC/Ed25519: forge nemá nativní verify
+      if (parsedCsrObj.publicKey && !parsedCsrObj.publicKey.isDummy) {
+        try {
+          const sigValid = parsedCsrObj.verify();
+          if (!sigValid) {
+            return showToast('✗ CSR má neplatný vlastní podpis (Proof of Possession selhává)! Certifikát nevydán.', 'error');
+          }
+        } catch (verifyErr) {
+          // ECC/Ed25519 CSR — forge verify() vyhazuje výjimku, logujeme ale pokračujeme
+          console.warn('CSR verify() selhal (pravděpodobně ne-RSA klíč):', verifyErr.message);
+        }
+      }
+
       const cn = document.getElementById('csr-cn').value.trim() || 'csr-signed.local';
       const days = parseInt(document.getElementById('csr-days').value) || 398;
-      const cert = createBaseCert(parsedCsrObj.publicKey, days, '04');
+      const cert = createBaseCert(parsedCsrObj.publicKey, days);
 
       const otherAttrs = parsedCsrObj.subject.attributes.filter(a => a.shortName !== 'CN' && a.name !== 'commonName');
       const cnPrepared = prepareX509Attributes([{ name: 'commonName', value: cn }]);
@@ -1625,21 +1760,30 @@
       cert.setIssuer(issuer.certObj.subject.attributes);
 
       const altNames = parseSanString(document.getElementById('csr-san').value);
-      const ekuObj = { name: 'extKeyUsage' };
+      const ekuObj = { name: 'extKeyUsage', critical: false };
       if (document.getElementById('csr-eku-server').checked) ekuObj.serverAuth = true;
       if (document.getElementById('csr-eku-client').checked) ekuObj.clientAuth = true;
       if (document.getElementById('csr-eku-email').checked) ekuObj.emailProtection = true;
       if (document.getElementById('csr-eku-code').checked) ekuObj.codeSigning = true;
 
       const isRsaPublicKey = !!(parsedCsrObj.publicKey && parsedCsrObj.publicKey.n);
+      const isCodeSign = document.getElementById('csr-eku-code').checked;
       const kuObj = { name: 'keyUsage', digitalSignature: true, critical: true };
       if (isRsaPublicKey) kuObj.keyEncipherment = true;
+      if (isCodeSign) kuObj.nonRepudiation = true;
+
+      // RFC 5280 §4.2.1.1: authorityKeyIdentifier = SKI vystavující CA
+      const skiExt = issuer.certObj.getExtension('subjectKeyIdentifier');
+      const akiExt = skiExt
+        ? { name: 'authorityKeyIdentifier', keyIdentifier: skiExt.subjectKeyIdentifier }
+        : { name: 'authorityKeyIdentifier' };
 
       const exts = [
         { name: 'basicConstraints', cA: false, critical: true },
         kuObj,
         ekuObj,
-        { name: 'subjectKeyIdentifier' }
+        { name: 'subjectKeyIdentifier' },
+        akiExt
       ];
       if (altNames.length > 0) exts.push({ name: 'subjectAltName', altNames });
       cert.setExtensions(exts);
@@ -1651,6 +1795,7 @@
       saveItem({
         id: idCounter++, type: 'leaf', name: `[CSR] ${cn}`, issuerId: issuer.id,
         algo: detectedAlgo, edSeedHex: null,
+        serialHex: cert._serialHex,
         revoked: false, revocationDate: null,
         certObj: cert, keyObj: null,
         certPem: forge.pki.certificateToPem(cert), keyPem: null
@@ -1673,14 +1818,22 @@
 
     try {
       const years = parseInt(document.getElementById('c-years').value) || 3;
-      const cert = createBaseCert(target.certObj.publicKey, years * 365, '99');
+      const cert = createBaseCert(target.certObj.publicKey, years * 365);
 
       cert.setSubject(target.certObj.subject.attributes);
       cert.setIssuer(issuer.certObj.subject.attributes);
+
+      // RFC 5280 §4.2.1.1: AKI = SKI podepisující CA; Cross-signed cert zachovává veřejný klíč cíle
+      const skiExt = issuer.certObj.getExtension('subjectKeyIdentifier');
+      const akiExt = skiExt
+        ? { name: 'authorityKeyIdentifier', keyIdentifier: skiExt.subjectKeyIdentifier }
+        : { name: 'authorityKeyIdentifier' };
+
       cert.setExtensions([
         { name: 'basicConstraints', cA: true, critical: true },
         { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
-        { name: 'subjectKeyIdentifier' }
+        { name: 'subjectKeyIdentifier' },
+        akiExt
       ]);
 
       await signCertificateWithIssuer(cert, issuer);
@@ -1688,6 +1841,7 @@
       saveItem({
         id: idCounter++, type: 'cross', name: `[Cross] ${target.name}`, issuerId: issuer.id, crossTargetId: target.id,
         algo: target.algo || 'RSA', edSeedHex: target.edSeedHex || null,
+        serialHex: cert._serialHex,
         revoked: false, revocationDate: null,
         certObj: cert, keyObj: target.keyObj,
         certPem: forge.pki.certificateToPem(cert), keyPem: target.keyPem
@@ -1746,7 +1900,27 @@
       ]);
 
       const revokedSeqItems = revokedChildren.map(rc => {
-        let hexSerial = (rc.certObj?.serialNumber || '01').replace(/[^0-9a-fA-F]/g, '');
+        // Priorita: uložené serialHex → certObj.serialNumber → DER extrakce (jako u klíčenky)
+        let hexSerial = rc.serialHex || rc.certObj?.serialNumber || '';
+        hexSerial = hexSerial.replace(/[^0-9a-fA-F]/g, '');
+        if (!hexSerial) {
+          // Záchranné parsování z PEM
+          try {
+            const msg = forge.pem.decode(rc.certPem)[0];
+            const asn = forge.asn1.fromDer(msg.body);
+            const tbs = asn.value[0];
+            if (tbs && tbs.value) {
+              let snIdx = 0;
+              if (tbs.value[0] && tbs.value[0].tagClass === forge.asn1.Class.CONTEXT_SPECIFIC) snIdx = 1;
+              const snAsn = tbs.value[snIdx];
+              if (snAsn && snAsn.type === forge.asn1.Type.INTEGER) {
+                for (let i = 0; i < snAsn.value.length; i++) {
+                  hexSerial += snAsn.value.charCodeAt(i).toString(16).padStart(2, '0');
+                }
+              }
+            }
+          } catch (e) { hexSerial = '01'; }
+        }
         if (hexSerial.length % 2 !== 0) hexSerial = '0' + hexSerial;
         const serialBytes = forge.util.hexToBytes(hexSerial);
         const revDate = rc.revocationDate ? new Date(rc.revocationDate) : now;
@@ -1800,7 +1974,9 @@
     const certMatch = raw.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/);
     if (!certMatch) return showToast('V textu nebyl nalezen blok -----BEGIN CERTIFICATE-----!', 'error');
 
-    const keyMatch = raw.match(/-----BEGIN (?:RSA |EC |ED25519 )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC |ED25519 )?PRIVATE KEY-----/);
+    // Regex pokrývá PKCS#8 (PRIVATE KEY), tradiční RSA (RSA PRIVATE KEY),
+    // tradiční EC (EC PRIVATE KEY) i šifrované (ENCRYPTED PRIVATE KEY)
+    const keyMatch = raw.match(/-----BEGIN (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----/);
 
     try {
       const certPem = certMatch[0];
@@ -1838,10 +2014,30 @@
       const newId = idCounter++;
       issuerId = (type === 'root') ? newId : (parentCa ? parentCa.id : newId);
 
+      // Extrahujeme serialHex z DER pro spolehlivé zobrazení i u ECC certifikátů
+      let importedSerialHex = null;
+      try {
+        const msg = forge.pem.decode(certPem)[0];
+        const asn = forge.asn1.fromDer(msg.body);
+        const tbs = asn.value[0];
+        if (tbs && tbs.value) {
+          let snIdx = 0;
+          if (tbs.value[0] && tbs.value[0].tagClass === forge.asn1.Class.CONTEXT_SPECIFIC) snIdx = 1;
+          const snAsn = tbs.value[snIdx];
+          if (snAsn && snAsn.type === forge.asn1.Type.INTEGER) {
+            let hex = '';
+            for (let i = 0; i < snAsn.value.length; i++) {
+              hex += snAsn.value.charCodeAt(i).toString(16).padStart(2, '0');
+            }
+            importedSerialHex = hex || null;
+          }
+        }
+      } catch (e) { /* ignorujeme */ }
+
       saveItem({
         id: newId, type, name: cn, issuerId,
         algo: detectedAlgo || (keyObj ? 'EXT-KEY' : 'EXT-PEM'),
-        edSeedHex,
+        edSeedHex, serialHex: importedSerialHex,
         revoked: false, revocationDate: null,
         certObj, keyObj, certPem, keyPem
       });
@@ -1877,12 +2073,15 @@
         { name: 'AES-GCM', iv }, aesKey, new TextEncoder().encode(payload)
       );
 
+      // Bezpečná konverze Uint8Array na hex bez rizika přetečení zásobníku
+      // (String.fromCharCode(...largeArray) může selhat při velkých payload)
+      const uint8ToHex = (arr) => Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
       const backupObj = {
         app: 'PKI-Mega-Toolbox-2.0',
         cipher: 'AES-256-GCM-PBKDF2',
-        salt: forge.util.bytesToHex(String.fromCharCode(...salt)),
-        iv: forge.util.bytesToHex(String.fromCharCode(...iv)),
-        data: forge.util.bytesToHex(String.fromCharCode(...new Uint8Array(encryptedBuf)))
+        salt: uint8ToHex(salt),
+        iv: uint8ToHex(iv),
+        data: uint8ToHex(new Uint8Array(encryptedBuf))
       };
 
       downloadFile(`pki_workspace_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(backupObj, null, 2));
@@ -2022,7 +2221,7 @@
         <div class="keyring-item type-${item.type === 'cross' ? 'inter' : item.type} ${item.revoked ? 'revoked' : ''}">
           <div class="keyring-info">
             <strong>${badge}${algoBadge}${revBadge} ${escapeHtml(item.name)}</strong>
-            <span>Vystavitel: ${escapeHtml(issuerName)}<br>Sériové č.: ${item.certObj?.serialNumber || 'N/A'}</span>
+            <span>Vystavitel: ${escapeHtml(issuerName)}<br>Sériové č.: <span style="font-family: monospace; font-size: 11px; color: #94a3b8;">${getItemSerialDisplay(item)}</span></span>
           </div>
           <div class="action-group">
             <button class="btn-sm" onclick="viewPemModal(${item.id}, 'cert')" title="Zobrazit zvýrazněný PEM">👁️ Zobrazit</button>
@@ -2092,13 +2291,15 @@
         const bc = cert.getExtension('basicConstraints');
         if (bc && bc.cA) isCA = "Ano (Certifikační Autorita)";
 
+        // Sériové číslo: primárně z DER (spolehlivé i pro ECC), fallback na forge parser
+        const decSn = extractSerialFromPem(pem) || cert.serialNumber || '';
         resultBox.innerHTML = `
           <div class="decode-row"><div class="decode-label">Subjekt (Komu patří)</div><div class="decode-val">${escapeHtml(sub)}</div></div>
           <div class="decode-row"><div class="decode-label">Vystavitel (Kdo jej vydal)</div><div class="decode-val">${escapeHtml(iss)}</div></div>
           <div class="decode-row"><div class="decode-label">Algoritmus veřejného klíče</div><div class="decode-val">${escapeHtml(algoName)}</div></div>
           <div class="decode-row"><div class="decode-label">Platnost Od — Do</div><div class="decode-val">${cert.validity.notBefore.toLocaleString()} — ${cert.validity.notAfter.toLocaleString()}</div></div>
           <div class="decode-row"><div class="decode-label">Domény a IP (SAN)</div><div class="decode-val">${escapeHtml(sans)}</div></div>
-          <div class="decode-row"><div class="decode-label">Sériové číslo (HEX)</div><div class="decode-val">${cert.serialNumber}</div></div>
+          <div class="decode-row"><div class="decode-label">Sériové číslo (HEX)</div><div class="decode-val" style="font-family: monospace; font-size: 13px;">${formatSerialHex(decSn)}</div></div>
           <div class="decode-row"><div class="decode-label">Je Autorita (CA)?</div><div class="decode-val">${isCA}</div></div>
         `;
       }
